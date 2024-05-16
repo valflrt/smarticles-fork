@@ -9,9 +9,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use eframe::epaint::Color32;
 use eframe::{App, Frame};
 use egui::plot::{Line, Plot, PlotPoints};
-use egui::{
-    Align2, CentralPanel, ComboBox, Context, FontId, ScrollArea, Sense, SidePanel, Slider, Vec2,
-};
+use egui::{CentralPanel, ComboBox, Context, ScrollArea, Sense, SidePanel, Slider, Vec2};
 use rand::distributions::Open01;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
@@ -432,12 +430,12 @@ impl App for Smarticles {
                 ui.horizontal(|ui| {
                     if self.follow_selected_particle {
                         if ui.button("stop following selected particle").clicked() {
+                            self.view.pos = -self.particle_positions[self.selected_particle];
                             self.follow_selected_particle = false;
                         }
-                    } else {
-                        if ui.button("follow selected particle").clicked() {
-                            self.follow_selected_particle = true;
-                        }
+                    } else if ui.button("follow selected particle").clicked() {
+                        self.view.pos *= 0.;
+                        self.follow_selected_particle = true;
                     }
                 });
             });
@@ -587,33 +585,39 @@ impl App for Smarticles {
                         self.view.drag_start_view_pos + drag_delta.to_vec2() / self.view.zoom;
                 }
 
-                if self.follow_selected_particle {
-                    self.view.pos = -self.particle_positions[self.selected_particle];
-                }
-
-                let center = resp.rect.center() + self.view.pos * self.view.zoom;
+                let center = resp.rect.center()
+                    + if self.follow_selected_particle {
+                        self.view.pos - self.particle_positions[self.selected_particle]
+                    } else {
+                        self.view.pos
+                    } * self.view.zoom;
 
                 for c in 0..self.shared.class_count {
                     let class = &self.classes[c];
-                    let col: Color32 = class.color.into();
 
                     for p in 0..self.shared.particle_counts[c] {
                         let pos = center + self.particle_positions[(c, p)] * self.view.zoom;
                         if paint.clip_rect().contains(pos) {
-                            paint.circle_filled(pos, PARTICLE_DIAMETER, col);
+                            paint.circle_filled(
+                                pos,
+                                if (c, p) == self.selected_particle {
+                                    PARTICLE_DIAMETER + 3.
+                                } else {
+                                    PARTICLE_DIAMETER
+                                },
+                                class.color,
+                            );
                         }
                     }
                 }
 
-                if self.shared.simulation_state != SimulationState::Stopped {
-                    paint.text(
-                        center + self.particle_positions[self.selected_particle] * self.view.zoom,
-                        Align2::LEFT_BOTTOM,
-                        format!("{:?}", self.selected_particle),
-                        FontId::monospace(12.),
-                        Color32::WHITE,
-                    );
-                }
+                // if self.shared.simulation_state != SimulationState::Stopped {
+                //     paint.circle_stroke(
+                //         center + self.particle_positions[self.selected_particle] * self.view.zoom,
+                //         PARTICLE_DIAMETER + 4.,
+                //         Stroke::new(1., Color32::WHITE),
+                //     );
+                // }
             });
 
         ctx.request_repaint();
