@@ -430,10 +430,10 @@ impl App for Smarticles {
                 ui.horizontal(|ui| {
                     if self.follow_selected_particle {
                         if ui.button("stop following selected particle").clicked() {
-                            self.view.pos = -self.particle_positions[self.selected_particle];
+                            self.view.pos -= self.particle_positions[self.selected_particle];
                             self.follow_selected_particle = false;
                         }
-                    } else if ui.button("follow selected particle").clicked() {
+                    } else if ui.button("focus and follow selected particle").clicked() {
                         self.view.pos *= 0.;
                         self.follow_selected_particle = true;
                     }
