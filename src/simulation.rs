@@ -13,7 +13,7 @@ use rayon::prelude::*;
 
 use crate::{
     SharedState, SimResults, UiEvent, UpdateSharedState, DEFAULT_FORCE, DEFAULT_RADIUS,
-    DEFAULT_WORLD_RADIUS, FORCE_FACTOR, MAX_CLASSES, MAX_PARTICLE_COUNT, MIN_RADIUS,
+    FORCE_FACTOR, MAX_CLASSES, MAX_PARTICLE_COUNT, MIN_RADIUS,
 };
 
 /// Min update interval in ms (when the simulation is running).
@@ -62,10 +62,7 @@ const CLOSE_FORCE: f32 = 20. * FORCE_FACTOR;
 //                         |
 //
 
-const BORDER_FORCE: f32 = 10. * FORCE_FACTOR;
-
-const DEFAULT_DAMPING_FACTOR: f32 = 0.4;
-const POS_FACTOR: f32 = 40.;
+const DAMPING_FACTOR: f32 = 0.6;
 
 #[derive(PartialEq)]
 pub enum SimulationState {
@@ -116,13 +113,12 @@ impl Simulation {
                 UiEvent::ParticleCountsUpdate(particle_counts) => {
                     self.shared.particle_counts = particle_counts
                 }
-                UiEvent::WorldRadiusUpdate(world_radius) => self.shared.world_radius = world_radius,
             }
         }
 
         if self.shared.simulation_state == SimulationState::Running {
             let start_time = Instant::now();
-            self.move_particles(UPDATE_INTERVAL.as_secs_f32());
+            self.move_particles();
             let elapsed = start_time.elapsed();
             self.sim_send
                 .send(SimResults(
@@ -147,7 +143,7 @@ impl Simulation {
         true
     }
 
-    fn move_particles(&mut self, dt: f32) {
+    fn move_particles(&mut self) {
         for c1 in 0..self.shared.class_count {
             for c2 in 0..self.shared.class_count {
                 let param = &self.shared.param_matrix[(c1, c2)];
@@ -157,32 +153,29 @@ impl Simulation {
                 (0..self.shared.particle_counts[c1])
                     .into_par_iter()
                     .map(|p1| {
-                        let mut dv = Vec2::ZERO;
+                        let mut f = Vec2::ZERO;
 
-                        let mut pos = self.particle_positions[(c1, p1)].to_owned();
-                        let mut vel = self.particle_velocities[(c1, p1)].to_owned();
+                        let pos = self.particle_positions[(c1, p1)];
+                        let vel = self.particle_velocities[(c1, p1)];
                         for p2 in 0..self.shared.particle_counts[c2] {
                             let other_pos = self.particle_positions[(c2, p2)];
-                            dv += get_partial_velocity(other_pos - pos, radius, force);
+                            f += get_partial_velocity(other_pos - pos, radius, force);
                         }
 
-                        let r = pos.length();
-                        if r >= self.shared.world_radius {
-                            dv += -pos.normalized() * BORDER_FORCE * (r - self.shared.world_radius);
-                        }
+                        // friction force
+                        f -= vel * DAMPING_FACTOR;
 
-                        vel = (vel + dv) * DEFAULT_DAMPING_FACTOR;
-                        // TODO remove dt: useless
-                        pos += vel * POS_FACTOR * dt;
+                        let new_vel = vel + f;
+                        let new_pos = pos + vel;
 
-                        (pos, vel)
+                        (new_pos, new_vel)
                     })
                     .collect::<Vec<(Vec2, Vec2)>>()
                     .iter()
                     .enumerate()
-                    .for_each(|(p1, (pos, vel))| {
-                        self.particle_positions[(c1, p1)] = *pos;
-                        self.particle_velocities[(c1, p1)] = *vel;
+                    .for_each(|(p1, (new_pos, new_vel))| {
+                        self.particle_positions[(c1, p1)] = *new_pos;
+                        self.particle_velocities[(c1, p1)] = *new_vel;
                     });
             }
         }
@@ -206,7 +199,6 @@ impl UpdateSharedState for Simulation {
     }
     fn reset(&mut self) {
         self.shared.simulation_state = SimulationState::Stopped;
-        self.shared.world_radius = DEFAULT_WORLD_RADIUS;
 
         self.shared.particle_counts.iter_mut().for_each(|p| *p = 0);
         self.reset_particles();

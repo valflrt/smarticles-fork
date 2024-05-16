@@ -86,4 +86,17 @@
   - `widowing_excides_sortwith`
   - `firiness_exundate_feering`
   - `propanol_katana_antwise`
-  - `timar_cammocky_enforth`: stable 6 class cell that moves fast and is really stable
+  - `timar_cammocky_enforth`: stable 6 class cell that moves fast and is really stable (S tier for me)
+  - `thinning_dipnoan_ragbolt`
+  - `caseworm_cocco_unfluent`
+  - `joinered_passages_columna`
+  - `ortho_firmness_aquavits`
+  - `topped_gagelike_sandwort`
+  - `hatboxes_appears_spousage`
+  - `rebut_cuartino_bugler`
+  - `firebrat_ruches_sidle`
+  - `mathetic_mouched_bordrage`
+  - `quart_fencelet_talipeds`
+  - `malate_roundoff_vaporous`: spiiin
+  - `devein_adonize_soring`
+  - `pimps_copula_unharsh`

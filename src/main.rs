@@ -30,13 +30,6 @@ const MIN_CLASSES: usize = 3;
 /// Max number of particle classes in the simulation.
 const MAX_CLASSES: usize = 8;
 
-/// Default world width the simulation.
-const DEFAULT_WORLD_RADIUS: f32 = 900.;
-/// Min world width the simulation.
-const MIN_WORLD_RADIUS: f32 = 200.;
-/// Max world width the simulation.
-const MAX_WORLD_RADIUS: f32 = 1200.;
-
 /// Min particle count.
 const MIN_PARTICLE_COUNT: usize = 0;
 /// Maximal particle count per class.
@@ -53,8 +46,7 @@ const RANDOM_MAX_PARTICLE_COUNT: usize = 1000;
 const DEFAULT_FORCE: f32 = 0.;
 const MAX_FORCE: f32 = 100.;
 const MIN_FORCE: f32 = -MAX_FORCE;
-/// Scales force.
-const FORCE_FACTOR: f32 = 0.0025;
+const FORCE_FACTOR: f32 = 0.001;
 
 const DEFAULT_RADIUS: f32 = 80.;
 const MIN_RADIUS: f32 = 30.;
@@ -138,7 +130,6 @@ enum UiEvent {
     ParamsUpdate(Array2D<Param>),
     ClassCountUpdate(usize),
     ParticleCountsUpdate([usize; MAX_CLASSES]),
-    WorldRadiusUpdate(f32),
 }
 
 #[derive(Debug)]
@@ -157,7 +148,6 @@ impl Param {
 
 struct SharedState {
     simulation_state: SimulationState,
-    world_radius: f32,
     class_count: usize,
     particle_counts: [usize; MAX_CLASSES],
     /// Matrix containing force and radius for each particle class
@@ -169,7 +159,6 @@ impl SharedState {
     fn new() -> Self {
         Self {
             simulation_state: SimulationState::Stopped,
-            world_radius: DEFAULT_WORLD_RADIUS,
             class_count: MAX_CLASSES,
             particle_counts: [0; MAX_CLASSES],
             param_matrix: Array2D::filled_with(

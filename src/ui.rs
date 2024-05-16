@@ -10,7 +10,7 @@ use eframe::epaint::Color32;
 use eframe::{App, Frame};
 use egui::plot::{Line, Plot, PlotPoints};
 use egui::{
-    Align2, CentralPanel, ComboBox, Context, FontId, ScrollArea, Sense, SidePanel, Slider, Stroke,
+    Align2, CentralPanel, ComboBox, Context, FontId, Pos2, ScrollArea, Sense, SidePanel, Slider,
     Vec2,
 };
 use rand::distributions::Open01;
@@ -20,20 +20,19 @@ use rayon::prelude::*;
 
 use crate::simulation::{get_partial_velocity, SimulationState};
 use crate::{
-    SharedState, SimResults, UiEvent, UpdateSharedState, DEFAULT_WORLD_RADIUS, FORCE_FACTOR,
-    MAX_CLASSES, MAX_FORCE, MAX_PARTICLE_COUNT, MAX_RADIUS, MAX_WORLD_RADIUS, MIN_CLASSES,
-    MIN_FORCE, MIN_PARTICLE_COUNT, MIN_RADIUS, MIN_WORLD_RADIUS, RANDOM_MAX_PARTICLE_COUNT,
-    RANDOM_MIN_PARTICLE_COUNT,
+    SharedState, SimResults, UiEvent, UpdateSharedState, FORCE_FACTOR, MAX_CLASSES, MAX_FORCE,
+    MAX_PARTICLE_COUNT, MAX_RADIUS, MIN_CLASSES, MIN_FORCE, MIN_PARTICLE_COUNT, MIN_RADIUS,
+    RANDOM_MAX_PARTICLE_COUNT, RANDOM_MIN_PARTICLE_COUNT,
 };
 
 /// Display diameter of the particles in the simulation (in
 /// pixels).
 const PARTICLE_DIAMETER: f32 = 1.;
 
-const DEFAULT_ZOOM: f32 = 1.2;
-const MIN_ZOOM: f32 = 0.5;
-const MAX_ZOOM: f32 = 10.;
-const ZOOM_FACTOR: f32 = 0.02;
+const DEFAULT_ZOOM: f32 = 2.;
+const MIN_ZOOM: f32 = 0.1;
+const MAX_ZOOM: f32 = 30.;
+const ZOOM_FACTOR: f32 = 1.1;
 
 const MAX_HISTORY_LEN: usize = 10;
 
@@ -129,7 +128,6 @@ impl Smarticles {
             }),
             particle_positions: Array2D::filled_with(Vec2::ZERO, MAX_CLASSES, MAX_PARTICLE_COUNT),
 
-            // prev_time: Instant::now(),
             view: View::DEFAULT,
 
             selected_param: (0, 0),
@@ -204,17 +202,12 @@ impl Smarticles {
             ))
             .unwrap();
     }
-    fn send_world_radius(&self) {
-        self.ui_send
-            .send(UiEvent::WorldRadiusUpdate(self.shared.world_radius))
-            .unwrap();
-    }
 
     fn export(&self) -> String {
         let mut bytes: Vec<u8> = Vec::new();
-        bytes
-            .write_u16::<LE>(self.shared.world_radius as u16)
-            .unwrap();
+        // bytes
+        //     .write_u16::<LE>(self.shared.world_radius as u16)
+        //     .unwrap();
         bytes.write_u8(self.shared.class_count as u8).unwrap();
         for count in &self.shared.particle_counts {
             bytes.write_u16::<LE>(*count as u16).unwrap();
@@ -231,9 +224,9 @@ impl Smarticles {
     }
 
     fn import(&mut self, mut bytes: &[u8]) {
-        self.shared.world_radius = bytes
-            .read_u16::<LE>()
-            .unwrap_or(DEFAULT_WORLD_RADIUS as u16) as f32;
+        // self.shared.world_radius = bytes
+        //     .read_u16::<LE>()
+        //     .unwrap_or(DEFAULT_WORLD_RADIUS as u16) as f32;
         self.shared.class_count = bytes.read_u8().unwrap_or(MAX_CLASSES as u8) as usize;
         for count in &mut self.shared.particle_counts {
             // let r = (bytes.read_u8().unwrap_or((p.color.r() * 255.) as u8) as f32) / 255.;
@@ -367,24 +360,6 @@ impl App for Smarticles {
             });
 
             ui.horizontal(|ui| {
-                ui.label("world radius:");
-                let world_radius = ui.add(Slider::new(
-                    &mut self.shared.world_radius,
-                    MIN_WORLD_RADIUS..=MAX_WORLD_RADIUS,
-                ));
-                let reset = ui.button("reset");
-                if reset.clicked() {
-                    self.shared.world_radius = DEFAULT_WORLD_RADIUS;
-                }
-                if world_radius.changed() || reset.clicked() {
-                    self.seed = self.export();
-                    self.spawn();
-
-                    self.send_world_radius();
-                }
-            });
-
-            ui.horizontal(|ui| {
                 ui.label("particle classes:");
                 let class_count = ui.add(Slider::new(
                     &mut self.shared.class_count,
@@ -456,17 +431,6 @@ impl App for Smarticles {
                         self.particle_positions[self.selected_particle]
                     ));
                 });
-
-                // ui.horizontal(|ui| {
-                //     ui.label("velocity:");
-                //     ui.code(
-                //         self.particles[self.selected_particle]
-                //             .vel
-                //             .length()
-                //             .to_string(),
-                //     );
-                //     ui.code(format!("{:?}", self.particles[self.selected_particle].vel));
-                // });
 
                 ui.horizontal(|ui| {
                     if self.follow_selected_particle {
@@ -597,11 +561,15 @@ impl App for Smarticles {
                     .rect
                     .contains(ctx.input().pointer.interact_pos().unwrap_or_default())
                 {
-                    self.view.zoom += ctx.input().scroll_delta.y * ZOOM_FACTOR;
+                    if ctx.input().scroll_delta.y > 0.0 {
+                        self.view.zoom *= ZOOM_FACTOR;
+                    } else if ctx.input().scroll_delta.y < 0.0 {
+                        self.view.zoom /= ZOOM_FACTOR;
+                    }
                 }
 
                 // This is weird but look at the values.
-                self.view.zoom = self.view.zoom.min(MAX_ZOOM).max(MIN_ZOOM);
+                self.view.zoom = self.view.zoom.max(MIN_ZOOM).min(MAX_ZOOM);
 
                 if let Some(interact_pos) = ctx.input().pointer.interact_pos() {
                     if ctx.input().pointer.any_down() && resp.rect.contains(interact_pos) {
@@ -623,27 +591,10 @@ impl App for Smarticles {
                 }
 
                 if self.follow_selected_particle {
-                    self.view.pos +=
-                        self.view.prev_follow_pos - self.particle_positions[self.selected_particle];
-                    self.view.prev_follow_pos = self.particle_positions[self.selected_particle];
+                    self.view.pos = -self.particle_positions[self.selected_particle];
                 }
 
-                let diag = Vec2::new(self.shared.world_radius, self.shared.world_radius);
-
-                let min = resp.rect.min
-                    + Vec2::new(resp.rect.width(), resp.rect.height()) / 2.
-                    + (-diag + self.view.pos) * self.view.zoom;
-
-                paint.circle_stroke(
-                    min + diag * self.view.zoom,
-                    (self.shared.world_radius + 60.) * self.view.zoom,
-                    Stroke {
-                        width: 1.,
-                        color: Color32::from_rgb(200, 200, 200),
-                    },
-                );
-
-                let center = min + diag * self.view.zoom;
+                let center = resp.rect.center() + self.view.pos * self.view.zoom;
 
                 for c in 0..self.shared.class_count {
                     let class = &self.classes[c];

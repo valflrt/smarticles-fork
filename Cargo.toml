@@ -2,6 +2,7 @@
 name = "smarticles"
 version = "0.1.3"
 edition = "2021"
+authors = ["ChevyRay", "valflrt"]
 
 [dependencies]
 array2d = "0.3.2"
