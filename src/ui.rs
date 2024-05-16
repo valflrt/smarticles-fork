@@ -10,8 +10,7 @@ use eframe::epaint::Color32;
 use eframe::{App, Frame};
 use egui::plot::{Line, Plot, PlotPoints};
 use egui::{
-    Align2, CentralPanel, ComboBox, Context, FontId, Pos2, ScrollArea, Sense, SidePanel, Slider,
-    Vec2,
+    Align2, CentralPanel, ComboBox, Context, FontId, ScrollArea, Sense, SidePanel, Slider, Vec2,
 };
 use rand::distributions::Open01;
 use rand::rngs::SmallRng;
@@ -39,7 +38,6 @@ const MAX_HISTORY_LEN: usize = 10;
 pub struct View {
     zoom: f32,
     pos: Vec2,
-    prev_follow_pos: Vec2,
     dragging: bool,
     drag_start_pos: Vec2,
     drag_start_view_pos: Vec2,
@@ -49,7 +47,6 @@ impl View {
     const DEFAULT: View = Self {
         zoom: DEFAULT_ZOOM,
         pos: Vec2::ZERO,
-        prev_follow_pos: Vec2::ZERO,
         dragging: false,
         drag_start_pos: Vec2::ZERO,
         drag_start_view_pos: Vec2::ZERO,
