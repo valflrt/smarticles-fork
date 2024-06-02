@@ -7,7 +7,7 @@ simulator with some fun features.
 >
 > – from the [original repository](https://github.com/hunar4321/life_code)
 
-![animation of the app simulating particles](./img/app_anim.mov)
+https://github.com/valflrt/smarticles-fork/assets/49407769/0dd69167-b88a-4c95-a827-3c25fd6ffef7
 
 ## Roadmap
 
@@ -46,7 +46,7 @@ Here are the app's basic controls
 
 Try randomizing it a few times and seeing what kind of results you get.
 
-![animation of the app simulating particles](./img/app_anim2.mov)
+https://github.com/valflrt/smarticles-fork/assets/49407769/35ceec60-ccdd-4171-89b0-8dd39fc0314b
 
 There are 8 particle types. You can change the behavior of each with respect to any other with the sliders:
 
@@ -57,7 +57,7 @@ There are 8 particle types. You can change the behavior of each with respect to 
 
 You can adjust these parameters while the simulation is running if you want to see the effect they have:
 
-![animation of live parameter editing](./img/live_param.mov)
+https://github.com/valflrt/smarticles-fork/assets/49407769/d833d28d-8354-42ad-a952-4e75c5eb344d
 
 ## Sharing Simulations
 
@@ -65,7 +65,7 @@ The `seed` field is the _"D.N.A"_ of your particle system. It contains all the i
 
 What does _your_ name look like?
 
-![simulation using "chevy_and_valflrt" as the seed](./img/custom_seed.mov)
+https://github.com/valflrt/smarticles-fork/assets/49407769/8cd0314d-71b2-4076-8f9e-2b4fe3d58178
 
 > ☝️ literally the inside of Chevy and valflrt brains ☝️
 
@@ -83,7 +83,7 @@ You can inspect particles using the particle inspector.
 
 One of the useful feature it offers is following the selected particle:
 
-![particle inspector follow feature demo](./img/particle_inspector_demo.mov)
+https://github.com/valflrt/smarticles-fork/assets/49407769/33cee6ec-5745-4567-a195-71ddcb44e848
 
 ## Seed History
 
