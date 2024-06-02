@@ -81,7 +81,7 @@ You can inspect particles using the particle inspector.
 
 ![screenshot of particle inspector menu](./img/particle_inspector_menu.png)
 
-One of the useful feature it offers is following the selected particle:
+One of the useful features it offers is following the selected particle:
 
 https://github.com/valflrt/smarticles-fork/assets/49407769/33cee6ec-5745-4567-a195-71ddcb44e848
 
