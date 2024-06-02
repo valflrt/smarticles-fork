@@ -7,7 +7,7 @@ simulator with some fun features.
 >
 > – from the [original repository](https://github.com/hunar4321/life_code)
 
-![animation of the app simulating particles](./img/app_anim.gif)
+![animation of the app simulating particles](./img/app_anim.mov)
 
 ## Roadmap
 
@@ -15,6 +15,7 @@ simulator with some fun features.
 - [x] make it possible to move around and zoom
 - [x] change particle interaction function
 - [x] add particle inspector that allows following a selected particle
+- [x] add seed history to go back to previous seeds
 - [x] add multithreading: the simulation and display threads run in parallel
 
 ## Running the App
@@ -45,7 +46,7 @@ Here are the app's basic controls
 
 Try randomizing it a few times and seeing what kind of results you get.
 
-![animation of the app simulating particles](./img/app_anim2.gif)
+![animation of the app simulating particles](./img/app_anim2.mov)
 
 There are 8 particle types. You can change the behavior of each with respect to any other with the sliders:
 
@@ -56,7 +57,7 @@ There are 8 particle types. You can change the behavior of each with respect to 
 
 You can adjust these parameters while the simulation is running if you want to see the effect they have:
 
-![animation of live parameter editing](./img/live_param.gif)
+![animation of live parameter editing](./img/live_param.mov)
 
 ## Sharing Simulations
 
@@ -64,7 +65,7 @@ The `seed` field is the _"D.N.A"_ of your particle system. It contains all the i
 
 What does _your_ name look like?
 
-![simulation using "chevy_and_valflrt" as the seed](./img/custom_seed.gif)
+![simulation using "chevy_and_valflrt" as the seed](./img/custom_seed.mov)
 
 > ☝️ literally the inside of Chevy and valflrt brains ☝️
 
@@ -73,3 +74,19 @@ If you start adjusting parameters, you'll notice the seed changes to a code that
 The code will be partially cut-off by the textbox, so make sure you select it all before copying.
 
 ![screenshot of particle's parameters](./img/custom_code.png)
+
+## Particle Inspector
+
+You can inspect particles using the particle inspector.
+
+![screenshot of particle inspector menu](./img/particle_inspector_menu.png)
+
+One of the useful feature it offers is following the selected particle:
+
+![particle inspector follow feature demo](./img/particle_inspector_demo.mov)
+
+## Seed History
+
+Using seed history you can easily browse previous seeds (because losing an interesting seed because you clicked randomize too fast is painful believe me).
+
+![screenshot of seed history menu](./img/seed_history.png)
