@@ -29,7 +29,7 @@ const PARTICLE_DIAMETER: f32 = 1.;
 const DEFAULT_ZOOM: f32 = 2.;
 const MIN_ZOOM: f32 = 0.1;
 const MAX_ZOOM: f32 = 30.;
-const ZOOM_FACTOR: f32 = 1.1;
+const ZOOM_FACTOR: f32 = 1.08;
 
 const MAX_HISTORY_LEN: usize = 10;
 
