@@ -240,11 +240,11 @@ impl Smarticles {
     }
 
     fn update_history(&mut self) {
-        self.history.push_back(self.seed.to_owned());
+        self.history.push_front(self.seed.to_owned());
         if self.history.len() > MAX_HISTORY_LEN {
-            self.history.pop_front();
+            self.history.pop_back();
         }
-        self.selected_history_entry = self.history.len() - 1;
+        self.selected_history_entry = 0;
     }
 }
 
