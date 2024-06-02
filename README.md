@@ -40,9 +40,9 @@ cargo run -r
 
 First, watch it in action. Press the `randomize` button, which will spawn a bunch of particles with randomized settings. Then, press `play` to run the simulation.
 
-Here are the app's basic controls
+Here are the app's general controls:
 
-![screenshot of the app's basic controls](./img/random_play.png)
+![screenshot of the app's basic controls](./img/general_controls.png)
 
 Try randomizing it a few times and seeing what kind of results you get.
 
