@@ -6,11 +6,15 @@ use array2d::Array2D;
 use eframe::epaint::Color32;
 use eframe::NativeOptions;
 use egui::Vec2;
+use mat::{Mat1D, Mat2D};
+use net::{reshape_mat1d_into_mat2d, reshape_mat2d_into_mat1d, Network};
 use simulation::SimulationState;
 use ui::Smarticles;
 
 use crate::simulation::Simulation;
 
+mod mat;
+mod net;
 mod simulation;
 mod ui;
 
@@ -53,6 +57,30 @@ const MIN_RADIUS: f32 = 30.;
 const MAX_RADIUS: f32 = 100.;
 
 fn main() {
+    let mut net = Network::random(2, 2, 2, 1);
+
+    let out = net.infer(Mat1D::from_vec([1., 0.].to_vec()));
+    println!("out:\n{}", out);
+
+    net.calc_gradients(
+        Mat1D::from_vec([1., 0.].to_vec()),
+        Mat1D::from_vec([1.].to_vec()),
+    );
+
+    let out = net.infer(Mat1D::from_vec([1., 0.].to_vec()));
+    println!("out:\n{}", out);
+
+    // let m = Mat2D::from_rows([1., 2., 3., 4., 5., 6.].to_vec(), 3, 2);
+    // println!("{}", m);
+    // let x = reshape_mat2d_into_mat1d(m);
+    // println!("{}", x);
+    // let m = reshape_mat1d_into_mat2d(x, 3);
+    // println!("{}", m);
+
+    // start();
+}
+
+fn start() {
     let options = NativeOptions {
         // initial_window_size: Some(Vec2::new(1600., 900.)),
         fullscreen: true,
