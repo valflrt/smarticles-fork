@@ -6,8 +6,8 @@ use array2d::Array2D;
 use eframe::epaint::Color32;
 use eframe::NativeOptions;
 use egui::Vec2;
-use mat::{Mat1D, Mat2D};
-use net::{reshape_mat1d_into_mat2d, reshape_mat2d_into_mat1d, Network};
+use mat::Mat2D;
+use net::Network;
 use simulation::SimulationState;
 use ui::Smarticles;
 
@@ -57,25 +57,38 @@ const MIN_RADIUS: f32 = 30.;
 const MAX_RADIUS: f32 = 100.;
 
 fn main() {
-    let mut net = Network::random(2, 2, 2, 1);
+    let mut net = Network::random([2, 3, 3, 1]);
 
-    let out = net.infer(Mat1D::from_vec([1., 0.].to_vec()));
+    let out = net.infer(Mat2D::from_rows([0., 0.].to_vec(), 2, 1));
     println!("out:\n{}", out);
 
-    net.calc_gradients(
-        Mat1D::from_vec([1., 0.].to_vec()),
-        Mat1D::from_vec([1.].to_vec()),
-    );
+    for _ in 0..1000 {
+        let gradients = net.calc_gradients(
+            Mat2D::from_rows([0., 0.].to_vec(), 2, 1),
+            Mat2D::from_rows([0.].to_vec(), 1, 1),
+        );
 
-    let out = net.infer(Mat1D::from_vec([1., 0.].to_vec()));
-    println!("out:\n{}", out);
+        // println!("weights gradients");
+        // for g in &gradients[0] {
+        //     println!("{}", g);
+        // }
+        // println!("biases gradients");
+        // for g in &gradients[1] {
+        //     println!("{}", g);
+        // }
 
-    // let m = Mat2D::from_rows([1., 2., 3., 4., 5., 6.].to_vec(), 3, 2);
-    // println!("{}", m);
-    // let x = reshape_mat2d_into_mat1d(m);
-    // println!("{}", x);
-    // let m = reshape_mat1d_into_mat2d(x, 3);
-    // println!("{}", m);
+        net.apply_gradients(gradients);
+
+        let out = net.infer(Mat2D::from_rows([0., 0.].to_vec(), 2, 1));
+        println!("out: {}", out);
+    }
+
+    let out = net.infer(Mat2D::from_rows([0., 0.].to_vec(), 2, 1));
+    println!("out after training:\n{}", out);
+
+    // let m = Mat2D::from_rows([1., 2., 3., 4., 5., 6.].to_vec(), 1, 6);
+    // println!("{:?}", m.vec());
+    // println!("{:?}", m.transpose().vec());
 
     // start();
 }

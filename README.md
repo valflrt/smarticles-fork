@@ -1,92 +1,80 @@
-# Smarticles
+﻿# TIPE
 
-A Rust port of [Brainxyz's Artificial Life](https://www.youtube.com/watch?v=0Kx4Y9TVMGg)
-simulator with some fun features.
+## Réseau de neurones
 
-> _A simple program to simulate primitive Artificial Life using simple rules of attraction or repulsion among atom-like particles, producing complex self-organzing life-like patterns._
->
-> – from the [original repository](https://github.com/hunar4321/life_code)
+### Définitions
 
-https://github.com/valflrt/smarticles-fork/assets/49407769/0dd69167-b88a-4c95-a827-3c25fd6ffef7
+Soit $n \in \mathbb N, n \geqslant 2$.
 
-## Roadmap
+<!-- On peut représenter un réseau de neurones à $n+1$ couches à l'aide du schéma suivant: -->
 
-- [x] add more particle types
-- [x] make it possible to move around and zoom
-- [x] change particle interaction function
-- [x] add particle inspector that allows following a selected particle
-- [x] add seed history to go back to previous seeds
-- [x] add multithreading: the simulation and display threads run in parallel
+<!-- <center>
+<img width="450px" src="https://i.ibb.co/kxZXvmF/network.png" />
+</center> -->
 
-## Running the App
+Soit $k = 0,\dots,n$.
 
-To run this, you will need Rust installed, which you can do by following the installation instructions on the [Rust website](https://www.rust-lang.org/). You should then have `cargo` installed, which is the command line program for managing and running Rust projects.
+On note $L_k$ la $k$-ième couche du réseau. Cette couche $L_k$ possède $\ell_k \in \mathbb N^*$ neurones auxquels on associe un réel appelé activation. On associe alors à la couche $L_k$ un vecteur $X_k \in \mathbb R^{\ell_k}$ appelé activation de la couche $L_k$ dont les coordonnées sont les activations des neurones de la couche $L_k$. Le vecteur $X_0$ est appelé vecteur d'entrée ou entrée du réseau et le vecteur $X_n$ est appelé vecteur de sortie ou sortie du réseau.
 
-You can check your version of `cargo` in the command line:
+Soit $k = 0,\dots,n-1$.
 
-```commandline
-cargo --version
-cargo 1.77.0 (3fe68eabf 2024-02-29)
-```
+Chaque neurone de la couche $L_k$ est relié à chacun des neurones de la couche suivante $L_{k+1}$ par une connection possédant un poids réel.
 
-Once done, download or clone this repository to your preferred location and run the program using `cargo` like so:
+On peut représenter les connections des neurones de la couche $L_k$ à ceux de la couche $L_{k+1}$ à l'aide d'une matrice $W_k \in \mathcal M_{\ell_{k+1},\ell_k}(\mathbb R)$.
 
-```commandline
-cd ~/path/to/smarticles
-cargo run -r
-```
+On associe aussi à chaque neurone un réel appelé biais. On associe alors à la couche $L_k$ un vecteur $B_k \in \mathbb R^{\ell_k}$ appelé biais de la couche $L_k$ dont les coordonnées sont les biais des neurones de la couche $L_k$.
 
-## How to Use It
+### Propagation: calcul des activations $X_1,\dots,X_n$ à partir de $X_0$
 
-First, watch it in action. Press the `randomize` button, which will spawn a bunch of particles with randomized settings. Then, press `play` to run the simulation.
+On définit la fonction réelle $a$ telle que: $a: x \in \mathbb R \longmapsto {\rm max}(x, 0)$.
 
-Here are the app's general controls:
+Pour $p \in \mathbb N$ et $X \in \mathbb R^p$, on note $a(X)$ le vecteur dont les coordonnées sont les images des coordonnées de $X$ par $a$.
 
-![screenshot of the app's basic controls](./img/general_controls.png)
+Pour un vecteur d'entrée $X_0 \in \mathbb R^{\ell_0}$ donné, on obtient par récurrence les activations $X_1,\dots,X_n$ en appliquant pour $k =1,\dots,n-1$:
 
-Try randomizing it a few times and seeing what kind of results you get.
+$$X_{k+1} = a(W_k X_k + B_k) \in \mathbb R^{\ell_{k+1}}$$
 
-https://github.com/valflrt/smarticles-fork/assets/49407769/35ceec60-ccdd-4171-89b0-8dd39fc0314b
+### But: entraîner le réseau
 
-There are 8 particle types. You can change the behavior of each with respect to any other with the sliders:
+Pour un vecteur d'entrée $X_0$ donné, on cherche à obtenir un vecteur de sortie $X_n$ très "proche" d'un vecteur cible $Y \in \mathbb R^{\ell_n}$.
 
-![screenshot of particle's parameters](./img/params.png)
+Il est donc nécessaire de disposer d'une fonction permettant de mesurer la distance entre le vecteur de sortie $X_n$ et le vecteur cible $Y$.
 
-- `power` is the particle's attraction to particles of the other type. A positive number means it is attracted to them, and negative means it is repulsed away.
-- `radius` is how far away the particle can sense particles of that type.
+On appelle cette fonction la fonction coût associée au vecteur cible $Y$ et on la note $C_Y$. Elle est définie comme la distance au carré entre $X_n$ et $Y = (y_i)_{1 \leqslant i \leqslant \ell_n}$ pour le produit scalaire canonique de $\mathbb R^{\ell_n}$:
 
-You can adjust these parameters while the simulation is running if you want to see the effect they have:
+$$\begin{align*} C_Y: X = (x_i)_{1 \leqslant i \leqslant \ell_n} \in \mathbb R^{\ell_n} \longmapsto ||X - Y||^2 = \sum\limits_{i=1}^{\ell_n} (x_i - y_i)^2 \end{align*}$$
 
-https://github.com/valflrt/smarticles-fork/assets/49407769/d833d28d-8354-42ad-a952-4e75c5eb344d
+Notre but est "d'entraîner" le réseau pour différentes données d'entraînement constituées de couples $(X_0, Y) \in \mathbb R^{\ell_0} \times \mathbb R^{\ell_n}$. Le but de l’entraînement est de minimiser $C_Y$ pour toutes les données d’entraînement.
 
-## Sharing Simulations
+Pour entraîner le réseau pour une donnée d'entraînement $(X_0, Y)$, on fixe donc les $X_k$ après avoir déterminé leur valeur par récurrence (voir précédemment) puis on cherche à minimiser $C_Y$ en faisant varier les $W_k$ et les $B_k$.
 
-The `seed` field is the _"D.N.A"_ of your particle system. It contains all the information needed to replicate the current simulation. Pressing `randomize` will give you random seeds, but you can also enter a custom one.
+Pour cela, on calcule numériquement les gradients de $C_Y$ par rapport à chaque $W_k$ et par rapport à chaque $B_k$, que l'on note $\nabla_{W_k} C_Y$ et $\nabla_{B_k} C_Y$ respectivement.
 
-What does _your_ name look like?
+On choisit ensuite un petit réel $\varepsilon$ et pour $k = 0,\dots,n-1$ on effectue les opérations:
 
-https://github.com/valflrt/smarticles-fork/assets/49407769/8cd0314d-71b2-4076-8f9e-2b4fe3d58178
+- $W_k \longleftarrow W_k - \varepsilon \nabla_{W_k} C_Y$
+- $B_k \longleftarrow B_k - \varepsilon \nabla_{B_k} C_Y$
 
-> ☝️ literally the inside of Chevy and valflrt brains ☝️
+Ce calcul de gradient et cette mise à jour des paramètres sont répétés un certain nombre de fois de manière à minimiser au maximum la fonction de coût pour la donnée d'entraînement $(X_0, Y)$.
 
-If you start adjusting parameters, you'll notice the seed changes to a code that begins with the `@` symbol. These are custom-encoded simulations, which you can share by copying the entire code.
+On répète ce processus appelé "descente de gradient" pour chaque donnée d'entraînement de manière à obtenir des paramètres permettant au réseau de pouvoir donner un vecteur de sortie proche de la sortie attendue pour les entrées présentes dans les données d'entraînement mais aussi pour des entrées qui n'y figurait pas: le réseau a "appris" à généraliser.
 
-The code will be partially cut-off by the textbox, so make sure you select it all before copying.
+### Mon problème
 
-![screenshot of particle's parameters](./img/custom_code.png)
+J'ai du mal à formaliser le calcul de gradient, dans ce qui suit je risque d'utiliser des termes que ne seront peut être pas adaptés car je ne connais pas très bien le sujet.
 
-## Particle Inspector
+Ce que je cherche à faire est trouver une formule qui me permette de calculer numériquement les gradients $\nabla_{W_k} C_Y$ et $\nabla_{B_k} C_Y$ à l'aide de $\nabla_{X_n} C_Y, \nabla_{X_{n-1}} C_Y, \dots, \nabla_{X_{k+1}} C_Y$ pour pouvoir automatiser ce calcul dans un programme informatique.
 
-You can inspect particles using the particle inspector.
+En effet, en faisant des recherches j'ai cru comprendre que dans le cas d'une fonction
+$\mathbb R^n \longrightarrow \mathbb R^m$, son gradient est une matrice Jacobienne.
 
-![screenshot of particle inspector menu](./img/particle_inspector_menu.png)
+Je crois aussi que l'on peut utiliser une sorte de règle de la chaîne pour la Jacobienne d'une composée de fonction:
 
-One of the useful features it offers is following the selected particle:
+$$J_{G \circ F}(X) = J_G(F(X)) J_F(X)$$
 
-https://github.com/valflrt/smarticles-fork/assets/49407769/33cee6ec-5745-4567-a195-71ddcb44e848
+Je crois aussi avoir compris que lorsque l'on cherche à différentier une fonction
+$\mathcal M_{n,p} \longrightarrow R^m$, il suffit de considérer une fonction $\mathbb R^{np} \longrightarrow \mathbb R^m$ prenant en entrée un vecteur issu de la concaténation des vecteurs colonnes de la matrice de la fonction initiale (par exemple) et d'en calculer la matrice Jacobienne.
 
-## Seed History
+Mais je doute sur ces points et c'est sur ceux-ci que j'aurais besoin d’éclaircissements.
 
-Using seed history you can easily browse previous seeds (because losing an interesting seed because you clicked randomize too fast is painful believe me).
-
-![screenshot of seed history menu](./img/seed_history.png)
+Merci beaucoup pour votre attention !
