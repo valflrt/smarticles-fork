@@ -1,248 +1,122 @@
 use std::f32::consts::TAU;
-use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
-use std::time::{Duration, Instant};
 
-use array2d::Array2D;
 use egui::Vec2;
-use log::debug;
 use rand::distributions::Open01;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 
-use crate::{
-    SharedState, SimResults, UiEvent, UpdateSharedState, DEFAULT_FORCE, DEFAULT_RADIUS,
-    FORCE_FACTOR, MAX_CLASSES, MAX_PARTICLE_COUNT, MIN_RADIUS,
-};
+use crate::mat::Mat2D;
+use crate::{CLASS_COUNT, MAX_PARTICLE_COUNT};
 
-/// Min update interval in ms (when the simulation is running).
-const UPDATE_INTERVAL: Duration = Duration::from_millis(30);
-/// Min update rate when the simulation is paused.
-const PAUSED_UPDATE_INTERVAL: Duration = Duration::from_millis(100);
+pub const FIRST_THRESHOLD: f32 = 10.;
+pub const SECOND_THRESHOLD: f32 = 15.;
+
+pub const PROXIMITY_FORCE: f32 = -80.;
+
+pub const FORCE_REDUCING_FACTOR: f32 = -0.00001;
+
+pub const DAMPING_FACTOR: f32 = 0.01;
 
 /// Radius of the spawn area.
-const SPAWN_AREA_RADIUS: f32 = 40.;
+const SPAWN_AREA_RADIUS: f32 = 50.;
 
-/// Below this radius, particles repel each other (see [`get_dv`]).
-const RAMP_START_RADIUS: f32 = MIN_RADIUS;
-/// The force with which the particles repel each other when
-/// below [`MIN_RADIUS`]. It is scaled depending on the distance
-/// between particles (see [`get_dv`] second arm).
-/// The radius where the force ramp ends (see [`get_dv`] first arm).
-const RAMP_LENGTH: f32 = 10.;
-/// "Close force", see graph below.
-const CLOSE_FORCE: f32 = 20. * FORCE_FACTOR;
-
-// I made a graph of the force with respect to distance in
-// order to explain the constants above (it might not help at all):
-//
-//
-//                   force ^
-//                         |
-//                         |
-//  force of the particle  | . . . . . . . . . . . . . . . . . . . . ./-----------------------
-//                         |                                        /-.
-//                         |                                      /-  .
-//                         |                                    /-    .
-//                         |                                 /--      .
-//                         |                               /-         .
-//                         |                             /-           .
-//                         |                           /-             .
-//                         |                         /-               .
-//                       0 |------------------------------------------------------------------>  radius (r)
-//                         |                 ----/  ^                 ^
-//                         |            ----/       |                 |
-//                         |       ----/            |                 |
-//                         |  ----/         RAMP_START_RADIUS     RAMP_START_RADIUS + RAMP_LENGTH
-//            CLOSE_FORCE  |-/
-//                         |
-//                         |
-//                         |
-//                         |
-//
-
-const DAMPING_FACTOR: f32 = 0.6;
-
-#[derive(PartialEq)]
-pub enum SimulationState {
-    Stopped,
-    Paused,
-    Running,
-}
-
+#[derive(Debug, Clone)]
 pub struct Simulation {
-    shared: SharedState,
+    pub particle_counts: [usize; CLASS_COUNT],
+    /// Matrix containing force and radius for each particle class
+    /// with respect to each other.
+    pub force_matrix: Mat2D<f32>,
 
-    particle_positions: Array2D<Vec2>,
-    particle_velocities: Array2D<Vec2>,
-
-    sim_send: Sender<SimResults>,
-    ui_rcv: Receiver<UiEvent>,
+    pub particle_prev_positions: Mat2D<Vec2>,
+    pub particle_positions: Mat2D<Vec2>,
 }
 
 impl Simulation {
-    pub fn new(sim_send: Sender<SimResults>, ui_rcv: Receiver<UiEvent>) -> Self {
-        Self {
-            shared: SharedState::new(),
+    pub fn move_particles(&mut self) {
+        for c1 in 0..CLASS_COUNT {
+            for c2 in 0..CLASS_COUNT {
+                let force_factor = -self.force_matrix[(c1, c2)];
 
-            particle_positions: Array2D::filled_with(Vec2::ZERO, MAX_CLASSES, MAX_PARTICLE_COUNT),
-            particle_velocities: Array2D::filled_with(Vec2::ZERO, MAX_CLASSES, MAX_PARTICLE_COUNT),
-
-            sim_send,
-            ui_rcv,
-        }
-    }
-
-    pub fn update(&mut self) -> bool {
-        let events = self.ui_rcv.try_iter().collect::<Vec<_>>();
-        debug!("Received events {:?}", events);
-        for event in events {
-            match event {
-                UiEvent::Play => self.play(),
-                UiEvent::Pause => self.pause(),
-                UiEvent::Reset => {
-                    self.reset();
-                    self.shared.simulation_state = SimulationState::Stopped;
-                }
-                UiEvent::Spawn => self.spawn(),
-                UiEvent::Quit => return false,
-
-                UiEvent::ParamsUpdate(params) => self.shared.param_matrix = params,
-                UiEvent::ClassCountUpdate(class_count) => self.shared.class_count = class_count,
-                UiEvent::ParticleCountsUpdate(particle_counts) => {
-                    self.shared.particle_counts = particle_counts
-                }
-            }
-        }
-
-        if self.shared.simulation_state == SimulationState::Running {
-            let start_time = Instant::now();
-            self.move_particles();
-            let elapsed = start_time.elapsed();
-            self.sim_send
-                .send(SimResults(
-                    Some(elapsed),
-                    self.particle_positions.to_owned(),
-                ))
-                .unwrap();
-
-            debug!(
-                "calculation took {:?}\n{}",
-                elapsed,
-                "#".to_string().repeat(elapsed.as_millis() as usize)
-            );
-            if elapsed < UPDATE_INTERVAL {
-                thread::sleep(UPDATE_INTERVAL - elapsed);
-            }
-        } else {
-            debug!("simulation paused, update interval reduced");
-            thread::sleep(PAUSED_UPDATE_INTERVAL);
-        }
-
-        true
-    }
-
-    fn move_particles(&mut self) {
-        for c1 in 0..self.shared.class_count {
-            for c2 in 0..self.shared.class_count {
-                let param = &self.shared.param_matrix[(c1, c2)];
-                let force = -param.force * FORCE_FACTOR;
-                let radius = param.radius;
-
-                (0..self.shared.particle_counts[c1])
+                (0..self.particle_counts[c1])
                     .into_par_iter()
                     .map(|p1| {
-                        let mut f = Vec2::ZERO;
+                        let mut force = Vec2::ZERO;
 
                         let pos = self.particle_positions[(c1, p1)];
-                        let vel = self.particle_velocities[(c1, p1)];
-                        for p2 in 0..self.shared.particle_counts[c2] {
+                        for p2 in 0..self.particle_counts[c2] {
                             let other_pos = self.particle_positions[(c2, p2)];
-                            f += get_partial_velocity(other_pos - pos, radius, force);
+                            let direction = other_pos - pos;
+                            force += calculate_force(direction.length(), force_factor)
+                                * direction.normalized();
                         }
 
-                        // friction force
-                        f -= vel * DAMPING_FACTOR;
+                        let prev_pos = self.particle_prev_positions[(c1, p1)];
 
-                        let new_vel = vel + f;
-                        let new_pos = pos + vel;
+                        force += (prev_pos - pos) * DAMPING_FACTOR;
 
-                        (new_pos, new_vel)
+                        let new_pos = 2. * pos - prev_pos + force;
+
+                        (pos, new_pos)
                     })
                     .collect::<Vec<(Vec2, Vec2)>>()
                     .iter()
                     .enumerate()
-                    .for_each(|(p1, (new_pos, new_vel))| {
+                    .for_each(|(p1, (pos, new_pos))| {
+                        self.particle_prev_positions[(c1, p1)] = *pos;
                         self.particle_positions[(c1, p1)] = *new_pos;
-                        self.particle_velocities[(c1, p1)] = *new_vel;
                     });
             }
         }
     }
 
-    fn reset_particles(&mut self) {
-        for c in 0..self.shared.class_count {
-            for p in 0..self.shared.particle_counts[c] {
+    /// Sets all particle positions to zero.
+    pub fn reset_particles_positions(&mut self) {
+        for c in 0..CLASS_COUNT {
+            for p in 0..self.particle_counts[c] {
                 self.particle_positions[(c, p)] = Vec2::ZERO;
+                self.particle_prev_positions[(c, p)] = Vec2::ZERO
             }
         }
     }
-}
 
-impl UpdateSharedState for Simulation {
-    fn play(&mut self) {
-        self.shared.simulation_state = SimulationState::Running;
-    }
-    fn pause(&mut self) {
-        self.shared.simulation_state = SimulationState::Paused;
-    }
-    fn reset(&mut self) {
-        self.shared.simulation_state = SimulationState::Stopped;
-
-        self.shared.particle_counts.iter_mut().for_each(|p| *p = 0);
-        self.reset_particles();
-
-        for i in 0..MAX_CLASSES {
-            for j in 0..MAX_CLASSES {
-                self.shared.param_matrix[(i, j)].force = DEFAULT_FORCE;
-                self.shared.param_matrix[(i, j)].radius = DEFAULT_RADIUS;
-            }
-        }
-    }
-    fn spawn(&mut self) {
-        self.reset_particles();
+    pub fn spawn(&mut self) {
+        self.reset_particles_positions();
 
         let mut rand = SmallRng::from_entropy();
 
-        for c in 0..self.shared.class_count {
-            for p in 0..self.shared.particle_counts[c] {
-                self.particle_positions[(c, p)] = SPAWN_AREA_RADIUS
+        for c in 0..CLASS_COUNT {
+            for p in 0..self.particle_counts[c] {
+                let pos = SPAWN_AREA_RADIUS
                     * Vec2::angled(TAU * rand.sample::<f32, _>(Open01))
                     * rand.sample::<f32, _>(Open01);
+                self.particle_positions[(c, p)] = pos;
+                self.particle_prev_positions[(c, p)] = pos;
             }
         }
+    }
+}
+impl Default for Simulation {
+    fn default() -> Self {
+        let particle_positions = Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT);
+        Self {
+            particle_counts: [200; CLASS_COUNT],
+            force_matrix: Mat2D::filled_with(0., CLASS_COUNT, CLASS_COUNT),
 
-        self.sim_send
-            .send(SimResults(None, self.particle_positions.to_owned()))
-            .unwrap();
+            particle_prev_positions: particle_positions.to_owned(),
+            particle_positions,
+        }
     }
 }
 
-pub fn get_partial_velocity(distance: Vec2, action_radius: f32, force: f32) -> Vec2 {
-    let r = distance.length();
-
-    if RAMP_START_RADIUS < r && r < action_radius {
-        distance.normalized() * force * ramp_then_const(r, RAMP_START_RADIUS, RAMP_LENGTH)
-    } else if 0. < r && r <= RAMP_START_RADIUS {
-        distance.normalized() * CLOSE_FORCE * (r / RAMP_START_RADIUS - 1.)
+pub fn calculate_force(radius: f32, force: f32) -> f32 {
+    (if radius < FIRST_THRESHOLD {
+        (radius / FIRST_THRESHOLD - 1.) * PROXIMITY_FORCE
+    } else if radius < FIRST_THRESHOLD + SECOND_THRESHOLD {
+        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD) * force
+    } else if radius < FIRST_THRESHOLD + 2. * SECOND_THRESHOLD {
+        (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * force
     } else {
-        Vec2::ZERO
-    }
-}
-
-#[inline]
-fn ramp_then_const(x: f32, zero: f32, const_start: f32) -> f32 {
-    // value of const: 2. * const_start / (zero + const_start)
-    (-(x - zero - const_start).abs() + x - zero + const_start) / (zero + const_start)
+        0.
+    }) * FORCE_REDUCING_FACTOR
 }

@@ -3,7 +3,7 @@ use std::{
     ops::{Add, Index, IndexMut, Mul, Sub},
 };
 
-use rand::{distributions::Uniform, Rng};
+use rand::{prelude::Distribution, Rng};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -52,6 +52,9 @@ where
     pub fn vec(&self) -> Vec<T> {
         self.vec.to_owned()
     }
+    pub fn vec_mut(&mut self) -> &mut Vec<T> {
+        &mut self.vec
+    }
 
     pub fn num_rows(&self) -> usize {
         self.num_rows
@@ -85,12 +88,15 @@ where
     }
 }
 
-impl Mat2D<f64> {
-    pub fn random(range: (f64, f64), num_rows: usize, num_columns: usize) -> Self {
+impl Mat2D<f32> {
+    pub fn random<D>(distribution: D, num_rows: usize, num_columns: usize) -> Self
+    where
+        D: Distribution<f32> + Clone,
+    {
         let mut rng = rand::thread_rng();
 
         let mut vec = vec![0.; num_rows * num_columns];
-        vec.fill_with(|| rng.sample::<f64, _>(Uniform::new(range.0, range.1)));
+        vec.fill_with(|| rng.sample::<f32, _>(distribution.clone()));
 
         Self {
             num_rows,
@@ -101,7 +107,7 @@ impl Mat2D<f64> {
 
     pub fn map<T>(&self, function: T) -> Self
     where
-        T: (Fn(f64) -> f64) + Sync + Send,
+        T: (Fn(f32) -> f32) + Sync + Send,
     {
         Mat2D::from_rows(
             self.vec().par_iter().map(move |x| function(*x)).collect(),
@@ -159,7 +165,7 @@ where
     }
 }
 
-impl Display for Mat2D<f64> {
+impl Display for Mat2D<f32> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.num_columns < 12 {
             for i in 0..self.num_rows {
@@ -202,8 +208,8 @@ impl Display for Mat2D<f64> {
     }
 }
 
-impl Add for &Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Add for &Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
     fn add(self, rhs: Self) -> Self::Output {
         assert_eq!(
@@ -229,30 +235,30 @@ impl Add for &Mat2D<f64> {
         )
     }
 }
-impl Add for Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Add for Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
     fn add(self, rhs: Self) -> Self::Output {
         &self + &rhs
     }
 }
-impl Add<&Mat2D<f64>> for Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Add<&Mat2D<f32>> for Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
-    fn add(self, rhs: &Mat2D<f64>) -> Self::Output {
+    fn add(self, rhs: &Mat2D<f32>) -> Self::Output {
         &self + rhs
     }
 }
-impl Add<Mat2D<f64>> for &Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Add<Mat2D<f32>> for &Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
-    fn add(self, rhs: Mat2D<f64>) -> Self::Output {
+    fn add(self, rhs: Mat2D<f32>) -> Self::Output {
         self + &rhs
     }
 }
 
-impl Sub for &Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Sub for &Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
     fn sub(self, rhs: Self) -> Self::Output {
         assert_eq!(
@@ -278,30 +284,30 @@ impl Sub for &Mat2D<f64> {
         )
     }
 }
-impl Sub for Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Sub for Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
     fn sub(self, rhs: Self) -> Self::Output {
         &self - &rhs
     }
 }
-impl Sub<&Mat2D<f64>> for Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Sub<&Mat2D<f32>> for Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
-    fn sub(self, rhs: &Mat2D<f64>) -> Self::Output {
+    fn sub(self, rhs: &Mat2D<f32>) -> Self::Output {
         &self - rhs
     }
 }
-impl Sub<Mat2D<f64>> for &Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Sub<Mat2D<f32>> for &Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
-    fn sub(self, rhs: Mat2D<f64>) -> Self::Output {
+    fn sub(self, rhs: Mat2D<f32>) -> Self::Output {
         self - &rhs
     }
 }
 
-impl Mul for &Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Mul for &Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
     fn mul(self, rhs: Self) -> Self::Output {
         assert_eq!(
@@ -316,7 +322,7 @@ impl Mul for &Mat2D<f64> {
                     (0..rhs.num_columns).into_par_iter().map(move |j| {
                         (0..self.num_columns)
                             .map(|k| self[(i, k)] * rhs[(k, j)])
-                            .sum::<f64>()
+                            .sum::<f32>()
                     })
                 })
                 .collect(),
@@ -325,24 +331,24 @@ impl Mul for &Mat2D<f64> {
         )
     }
 }
-impl Mul for Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Mul for Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
     fn mul(self, rhs: Self) -> Self::Output {
         &self * &rhs
     }
 }
-impl Mul<&Mat2D<f64>> for Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Mul<&Mat2D<f32>> for Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
-    fn mul(self, rhs: &Mat2D<f64>) -> Self::Output {
+    fn mul(self, rhs: &Mat2D<f32>) -> Self::Output {
         &self * rhs
     }
 }
-impl Mul<Mat2D<f64>> for &Mat2D<f64> {
-    type Output = Mat2D<f64>;
+impl Mul<Mat2D<f32>> for &Mat2D<f32> {
+    type Output = Mat2D<f32>;
 
-    fn mul(self, rhs: Mat2D<f64>) -> Self::Output {
+    fn mul(self, rhs: Mat2D<f32>) -> Self::Output {
         self * &rhs
     }
 }

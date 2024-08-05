@@ -1,26 +1,37 @@
-use std::collections::hash_map::DefaultHasher;
-use std::collections::VecDeque;
-use std::hash::{Hash, Hasher};
-use std::sync::mpsc::{Receiver, Sender};
-use std::thread::JoinHandle;
+use std::{
+    collections::{hash_map::DefaultHasher, VecDeque},
+    hash::{Hash, Hasher},
+    sync::mpsc::Receiver,
+    thread::JoinHandle,
+};
 
-use array2d::Array2D;
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use eframe::epaint::Color32;
 use eframe::{App, Frame};
-use egui::plot::{Line, Plot, PlotPoints};
-use egui::{CentralPanel, ComboBox, Context, ScrollArea, Sense, SidePanel, Slider, Vec2};
-use rand::distributions::Open01;
+use egui::{
+    plot::{Line, Plot, PlotPoints},
+    Button,
+};
+use egui::{
+    Align2, CentralPanel, ComboBox, Context, FontId, ScrollArea, Sense, SidePanel, Slider, Stroke,
+    Vec2,
+};
 use rand::rngs::SmallRng;
+use rand::{distributions::Open01, random};
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 
-use crate::simulation::{get_partial_velocity, SimulationState};
 use crate::{
-    SharedState, SimResults, UiEvent, UpdateSharedState, FORCE_FACTOR, MAX_CLASSES, MAX_FORCE,
-    MAX_PARTICLE_COUNT, MAX_RADIUS, MIN_CLASSES, MIN_FORCE, MIN_PARTICLE_COUNT, MIN_RADIUS,
+    ai::net::Network,
+    simulation::{calculate_force, FIRST_THRESHOLD, SECOND_THRESHOLD},
+};
+use crate::{mat::Mat2D, Senders};
+use crate::{
+    SmarticlesEvent, CLASS_COUNT, MAX_FORCE, MAX_PARTICLE_COUNT, MIN_FORCE, MIN_PARTICLE_COUNT,
     RANDOM_MAX_PARTICLE_COUNT, RANDOM_MIN_PARTICLE_COUNT,
 };
+
+use super::simulation::{NetworkState, SimulationState};
 
 /// Display diameter of the particles in the simulation (in
 /// pixels).
@@ -32,6 +43,20 @@ const MAX_ZOOM: f32 = 30.;
 const ZOOM_FACTOR: f32 = 1.08;
 
 const MAX_HISTORY_LEN: usize = 10;
+
+#[derive(Debug, PartialEq)]
+enum TrainingState {
+    Running,
+    Stopped,
+}
+impl TrainingState {
+    pub fn is_running(&self) -> bool {
+        match self {
+            TrainingState::Running => true,
+            _ => false,
+        }
+    }
+}
 
 pub struct View {
     zoom: f32,
@@ -58,11 +83,8 @@ struct ClassProps {
     color: Color32,
 }
 
-pub struct Smarticles {
-    shared: SharedState,
-
-    classes: [ClassProps; MAX_CLASSES],
-    particle_positions: Array2D<Vec2>,
+pub struct Ui {
+    classes: [ClassProps; CLASS_COUNT],
 
     seed: String,
 
@@ -79,18 +101,31 @@ pub struct Smarticles {
 
     words: Vec<String>,
 
-    ui_send: Sender<UiEvent>,
-    sim_rcv: Receiver<SimResults>,
+    senders: Senders,
+    receiver: Receiver<SmarticlesEvent>,
 
     simulation_handle: Option<JoinHandle<()>>,
+    training_handle: Option<JoinHandle<()>>,
+
+    // TODO: group the next fields into a new struct
+    particle_positions: Mat2D<Vec2>,
+    particle_counts: [usize; CLASS_COUNT],
+    force_matrix: Mat2D<f32>,
+    simulation_state: SimulationState,
+    network_state: NetworkState,
+    networks: Option<Vec<Network>>,
+    selected_network: usize,
+    target_position: Vec2,
+    training_state: TrainingState,
 }
 
-impl Smarticles {
+impl Ui {
     pub fn new<S>(
-        classes: [(S, Color32); MAX_CLASSES],
-        ui_send: Sender<UiEvent>,
-        sim_rcv: Receiver<SimResults>,
+        classes: [(S, Color32); CLASS_COUNT],
+        senders: Senders,
+        receiver: Receiver<SmarticlesEvent>,
         simulation_handle: Option<JoinHandle<()>>,
+        training_handle: Option<JoinHandle<()>>,
     ) -> Self
     where
         S: ToString,
@@ -111,9 +146,11 @@ impl Smarticles {
             })
             .collect();
 
-        Self {
-            shared: SharedState::new(),
+        let target_position =
+            Vec2::new(random::<f32>() * 2. - 1., random::<f32>() * 2. - 1.) * 5000.;
+        senders.send_sim(SmarticlesEvent::TargetPositionChange(target_position));
 
+        Self {
             seed: "".to_string(),
 
             classes: classes.map(|(name, color)| ClassProps {
@@ -121,7 +158,6 @@ impl Smarticles {
                 heading: "class ".to_string() + &name.to_string(),
                 color,
             }),
-            particle_positions: Array2D::filled_with(Vec2::ZERO, MAX_CLASSES, MAX_PARTICLE_COUNT),
 
             view: View::DEFAULT,
 
@@ -136,10 +172,21 @@ impl Smarticles {
 
             words,
 
-            ui_send,
-            sim_rcv,
+            senders,
+            receiver,
 
             simulation_handle,
+            training_handle,
+
+            particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
+            particle_counts: [200; CLASS_COUNT],
+            force_matrix: Mat2D::filled_with(0., CLASS_COUNT, CLASS_COUNT),
+            simulation_state: SimulationState::Paused,
+            network_state: NetworkState::Stopped,
+            networks: None,
+            selected_network: 0,
+            target_position,
+            training_state: TrainingState::Stopped,
         }
     }
 
@@ -160,81 +207,53 @@ impl Smarticles {
         let mut rand = |min: f32, max: f32| min + (max - min) * rand.sample::<f32, _>(Open01);
 
         const POW_F: f32 = 1.25;
-        const RAD_F: f32 = 1.1;
 
-        for i in 0..self.shared.class_count {
-            self.shared.particle_counts[i] = rand(
+        for i in 0..CLASS_COUNT {
+            self.particle_counts[i] = rand(
                 RANDOM_MIN_PARTICLE_COUNT as f32,
                 RANDOM_MAX_PARTICLE_COUNT as f32,
             ) as usize;
-            for j in 0..self.shared.class_count {
+            for j in 0..CLASS_COUNT {
                 let pow = rand(MIN_FORCE, MAX_FORCE);
-                self.shared.param_matrix[(i, j)].force = pow.signum() * pow.abs().powf(1. / POW_F);
-                self.shared.param_matrix[(i, j)].radius =
-                    rand(MIN_RADIUS, MAX_RADIUS).powf(1. / RAD_F);
+                self.force_matrix[(i, j)] = pow.signum() * pow.abs().powf(1. / POW_F);
             }
         }
 
         self.send_params();
-        self.send_class_count();
         self.send_particle_counts();
     }
 
     fn send_params(&self) {
-        self.ui_send
-            .send(UiEvent::ParamsUpdate(self.shared.param_matrix.to_owned()))
-            .unwrap();
-    }
-    fn send_class_count(&self) {
-        self.ui_send
-            .send(UiEvent::ClassCountUpdate(self.shared.class_count))
-            .unwrap();
+        self.senders.send_sim(SmarticlesEvent::ForceMatrixChange(
+            self.force_matrix.to_owned(),
+        ));
     }
     fn send_particle_counts(&self) {
-        self.ui_send
-            .send(UiEvent::ParticleCountsUpdate(
-                self.shared.particle_counts.to_owned(),
-            ))
-            .unwrap();
+        self.senders.send_sim(SmarticlesEvent::ParticleCountsUpdate(
+            self.particle_counts.to_owned(),
+        ));
     }
 
     fn export(&self) -> String {
         let mut bytes: Vec<u8> = Vec::new();
-        // bytes
-        //     .write_u16::<LE>(self.shared.world_radius as u16)
-        //     .unwrap();
-        bytes.write_u8(self.shared.class_count as u8).unwrap();
-        for count in &self.shared.particle_counts {
+        for count in &self.particle_counts {
             bytes.write_u16::<LE>(*count as u16).unwrap();
         }
-        self.shared
-            .param_matrix
-            .elements_row_major_iter()
-            .for_each(|p| {
-                bytes.write_i8(p.force as i8).unwrap();
-                bytes.write_i8(p.radius as i8).unwrap();
-            });
+        self.force_matrix.vec().iter().copied().for_each(|force| {
+            bytes.write_i8(force as i8).unwrap();
+        });
 
         format!("@{}", base64::encode(bytes))
     }
 
     fn import(&mut self, mut bytes: &[u8]) {
-        // self.shared.world_radius = bytes
-        //     .read_u16::<LE>()
-        //     .unwrap_or(DEFAULT_WORLD_RADIUS as u16) as f32;
-        self.shared.class_count = bytes.read_u8().unwrap_or(MAX_CLASSES as u8) as usize;
-        for count in &mut self.shared.particle_counts {
-            // let r = (bytes.read_u8().unwrap_or((p.color.r() * 255.) as u8) as f32) / 255.;
-            // let g = (bytes.read_u8().unwrap_or((p.color.g() * 255.) as u8) as f32) / 255.;
-            // let b = (bytes.read_u8().unwrap_or((p.color.b() * 255.) as u8) as f32) / 255.;
-            // p.color = Rgba::from_rgb(r, g, b);
+        for count in &mut self.particle_counts {
             *count = bytes.read_u16::<LE>().unwrap_or(0) as usize;
         }
 
-        for i in 0..MAX_CLASSES {
-            for j in 0..MAX_CLASSES {
-                self.shared.param_matrix[(i, j)].force = bytes.read_i8().unwrap_or(0) as f32;
-                self.shared.param_matrix[(i, j)].radius = bytes.read_i8().unwrap_or(0) as f32;
+        for i in 0..CLASS_COUNT {
+            for j in 0..CLASS_COUNT {
+                self.force_matrix[(i, j)] = bytes.read_i8().unwrap_or(0) as f32;
             }
         }
     }
@@ -246,33 +265,51 @@ impl Smarticles {
         }
         self.selected_history_entry = 0;
     }
-}
 
-impl UpdateSharedState for Smarticles {
     fn play(&mut self) {
-        self.shared.simulation_state = SimulationState::Running;
-        self.ui_send.send(UiEvent::Play).unwrap();
+        self.simulation_state = SimulationState::Running;
+        self.senders.send_sim(SmarticlesEvent::SimulationStart);
     }
     fn pause(&mut self) {
-        self.shared.simulation_state = SimulationState::Paused;
-        self.ui_send.send(UiEvent::Pause).unwrap();
+        self.simulation_state = SimulationState::Paused;
+        self.senders.send_sim(SmarticlesEvent::SimulationPause);
     }
     fn reset(&mut self) {
-        self.shared.simulation_state = SimulationState::Stopped;
-        self.ui_send.send(UiEvent::Reset).unwrap();
+        self.simulation_state = SimulationState::Paused;
+        self.senders.send_sim(SmarticlesEvent::SimulationReset);
     }
     fn spawn(&mut self) {
-        self.ui_send.send(UiEvent::Spawn).unwrap();
+        self.senders.send_sim(SmarticlesEvent::SpawnParticles);
     }
 }
 
-impl App for Smarticles {
+impl App for Ui {
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
-        if let Some(SimResults(elapsed, positions)) = self.sim_rcv.try_iter().last() {
-            if let Some(elapsed) = elapsed {
-                self.calculation_time = elapsed.as_millis();
+        let events = self.receiver.try_iter();
+        for event in events {
+            match event {
+                SmarticlesEvent::SimulationResults(positions, elapsed) => {
+                    if let Some(elapsed) = elapsed {
+                        self.calculation_time = elapsed.as_millis();
+                    }
+                    self.particle_positions = positions;
+                }
+
+                SmarticlesEvent::ForceMatrixChange(force_matrix) => {
+                    self.force_matrix = force_matrix;
+                }
+
+                SmarticlesEvent::ParticleCountsUpdate(particle_counts) => {
+                    self.particle_counts = particle_counts;
+                }
+
+                SmarticlesEvent::Networks(networks) => {
+                    self.training_state = TrainingState::Stopped;
+                    self.networks = Some(networks);
+                }
+
+                _ => {}
             }
-            self.particle_positions = positions;
         }
 
         SidePanel::left("settings").show(ctx, |ui| {
@@ -287,7 +324,7 @@ impl App for Smarticles {
                     self.spawn();
                 }
 
-                if self.shared.simulation_state == SimulationState::Running {
+                if self.simulation_state == SimulationState::Running {
                     if ui
                         .button("pause")
                         .on_hover_text("pause the simulation")
@@ -336,8 +373,12 @@ impl App for Smarticles {
                 }
 
                 if ui.button("quit").on_hover_text("exit smarticles").clicked() {
-                    self.ui_send.send(UiEvent::Quit).unwrap();
+                    self.senders.send_sim(SmarticlesEvent::Quit);
+                    self.senders.send_training(SmarticlesEvent::Quit);
                     if let Some(handle) = self.simulation_handle.take() {
+                        handle.join().unwrap();
+                    }
+                    if let Some(handle) = self.training_handle.take() {
                         handle.join().unwrap();
                     }
                     frame.close();
@@ -355,27 +396,9 @@ impl App for Smarticles {
             });
 
             ui.horizontal(|ui| {
-                ui.label("particle classes:");
-                let class_count = ui.add(Slider::new(
-                    &mut self.shared.class_count,
-                    MIN_CLASSES..=MAX_CLASSES,
-                ));
-                let reset = ui.button("reset");
-                if reset.clicked() {
-                    self.shared.class_count = MAX_CLASSES;
-                }
-                if class_count.changed() || reset.clicked() {
-                    self.seed = self.export();
-                    self.spawn();
-
-                    self.send_class_count();
-                }
-            });
-
-            ui.horizontal(|ui| {
                 ui.label("total particle count:");
 
-                let total_particle_count: usize = self.shared.particle_counts.iter().sum();
+                let total_particle_count: usize = self.particle_counts.iter().sum();
                 ui.code(total_particle_count.to_string());
             });
 
@@ -396,7 +419,7 @@ impl App for Smarticles {
                         )
                         .changed()
                     {
-                        self.seed = self.history[self.selected_history_entry].to_owned();
+                        self.history[self.selected_history_entry].clone_into(&mut self.seed);
                         self.apply_seed();
                         self.spawn();
                     };
@@ -415,7 +438,7 @@ impl App for Smarticles {
                     ui.label("particle index:");
                     ui.add(Slider::new(
                         &mut self.selected_particle.1,
-                        0..=(self.shared.particle_counts[self.selected_particle.0] - 1),
+                        0..=(self.particle_counts[self.selected_particle.0] - 1),
                     ));
                 });
 
@@ -443,18 +466,13 @@ impl App for Smarticles {
             ui.collapsing(
                 "velocity elementary variation with respect to distance between particles",
                 |ui| {
-                    let points: PlotPoints = (0..1000)
+                    let points: PlotPoints = (0
+                        ..((FIRST_THRESHOLD + 2. * SECOND_THRESHOLD) * 1000.) as i32)
                         .map(|i| {
-                            let x = i as f32 * 0.1;
+                            let x = i as f32 / 1000.;
                             [
                                 x as f64,
-                                get_partial_velocity(
-                                    Vec2::new(x, 0.),
-                                    self.shared.param_matrix[self.selected_param].radius,
-                                    self.shared.param_matrix[self.selected_param].force
-                                        * FORCE_FACTOR,
-                                )
-                                .x as f64,
+                                calculate_force(x, self.force_matrix[self.selected_param]) as f64,
                             ]
                         })
                         .collect();
@@ -465,8 +483,72 @@ impl App for Smarticles {
                 },
             );
 
+            ui.collapsing("training menu", |ui| {
+                if self.training_state == TrainingState::Running {
+                    ui.horizontal(|ui| {
+                        ui.label("Training...");
+                        ui.spinner();
+                    });
+                }
+
+                [1, 10, 20, 50, 100, 200, 500, 1000]
+                    .iter()
+                    .copied()
+                    .for_each(|gen_count| {
+                        if ui
+                            .add_enabled(
+                                !self.training_state.is_running(),
+                                Button::new(format!("start {} generations", gen_count)),
+                            )
+                            .clicked()
+                        {
+                            self.training_state = TrainingState::Running;
+                            self.senders
+                                .send_sim(SmarticlesEvent::StartTraining(gen_count));
+                            self.senders
+                                .send_training(SmarticlesEvent::StartTraining(gen_count));
+                        }
+                    });
+
+                if let Some(networks) = &self.networks {
+                    ui.label("network:");
+                    ComboBox::from_id_source("network").show_index(
+                        ui,
+                        &mut self.selected_network,
+                        networks.len(),
+                        |i| format!("#{}", i),
+                    );
+
+                    if self.network_state == NetworkState::Running {
+                        if ui
+                            .add_enabled(
+                                !self.training_state.is_running(),
+                                Button::new("pause network inference"),
+                            )
+                            .clicked()
+                        {
+                            self.network_state = NetworkState::Stopped;
+                            self.senders.send_sim(SmarticlesEvent::NetworkStop);
+                        }
+                    } else if ui
+                        .add_enabled(
+                            !self.training_state.is_running(),
+                            Button::new("start network inference"),
+                        )
+                        .clicked()
+                    {
+                        self.network_state = NetworkState::Running;
+                        self.senders
+                            .send_sim(SmarticlesEvent::InferenceNetworkChange(
+                                networks[self.selected_network].clone(),
+                            ));
+                        self.senders.send_sim(SmarticlesEvent::NetworkStart);
+                    }
+                }
+            });
+
             ScrollArea::vertical().show(ui, |ui| {
-                for i in 0..self.shared.class_count {
+                for i in 0..CLASS_COUNT {
                     ui.add_space(10.);
                     ui.colored_label(self.classes[i].color, &self.classes[i].heading);
                     ui.separator();
@@ -475,7 +557,7 @@ impl App for Smarticles {
                         ui.label("particle count:");
                         if ui
                             .add(Slider::new(
-                                &mut self.shared.particle_counts[i],
+                                &mut self.particle_counts[i],
                                 MIN_PARTICLE_COUNT..=MAX_PARTICLE_COUNT,
                             ))
                             .changed()
@@ -490,7 +572,7 @@ impl App for Smarticles {
                     ui.collapsing(self.classes[i].heading.to_owned() + " params", |ui| {
                         ui.horizontal(|ui| {
                             ui.vertical(|ui| {
-                                for j in 0..self.shared.class_count {
+                                for j in 0..CLASS_COUNT {
                                     ui.horizontal(|ui| {
                                         ui.label("force (");
                                         ui.colored_label(
@@ -500,32 +582,8 @@ impl App for Smarticles {
                                         ui.label(")");
                                         if ui
                                             .add(Slider::new(
-                                                &mut self.shared.param_matrix[(i, j)].force,
+                                                &mut self.force_matrix[(i, j)],
                                                 MIN_FORCE..=MAX_FORCE,
-                                            ))
-                                            .changed()
-                                        {
-                                            self.selected_param = (i, j);
-                                            self.seed = self.export();
-
-                                            self.send_params();
-                                        }
-                                    });
-                                }
-                            });
-                            ui.vertical(|ui| {
-                                for j in 0..self.shared.class_count {
-                                    ui.horizontal(|ui| {
-                                        ui.label("radius (");
-                                        ui.colored_label(
-                                            self.classes[j].color,
-                                            &self.classes[j].name,
-                                        );
-                                        ui.label(")");
-                                        if ui
-                                            .add(Slider::new(
-                                                &mut self.shared.param_matrix[(i, j)].radius,
-                                                MIN_RADIUS..=MAX_RADIUS,
                                             ))
                                             .changed()
                                         {
@@ -564,19 +622,7 @@ impl App for Smarticles {
                 }
 
                 // This is weird but look at the values.
-                self.view.zoom = self.view.zoom.max(MIN_ZOOM).min(MAX_ZOOM);
-
-                if let Some(interact_pos) = ctx.input().pointer.interact_pos() {
-                    if ctx.input().pointer.any_down() && resp.rect.contains(interact_pos) {
-                        if !self.view.dragging {
-                            self.view.dragging = true;
-                            self.view.drag_start_pos = interact_pos.to_vec2();
-                            self.view.drag_start_view_pos = self.view.pos;
-                        }
-                    } else {
-                        self.view.dragging = false;
-                    }
-                }
+                self.view.zoom = self.view.zoom.clamp(MIN_ZOOM, MAX_ZOOM);
 
                 if self.view.dragging {
                     let drag_delta =
@@ -592,10 +638,60 @@ impl App for Smarticles {
                         self.view.pos
                     } * self.view.zoom;
 
-                for c in 0..self.shared.class_count {
+                if let Some(interact_pos) = ctx.input().pointer.interact_pos() {
+                    if ctx
+                        .input()
+                        .pointer
+                        .button_down(egui::PointerButton::Primary)
+                        && resp.rect.contains(interact_pos)
+                    {
+                        if !self.view.dragging {
+                            self.view.dragging = true;
+                            self.view.drag_start_pos = interact_pos.to_vec2();
+                            self.view.drag_start_view_pos = self.view.pos;
+                        }
+                    } else {
+                        self.view.dragging = false;
+                    }
+
+                    if ctx
+                        .input()
+                        .pointer
+                        .button_clicked(egui::PointerButton::Secondary)
+                    {
+                        self.target_position =
+                            (interact_pos.to_vec2() - center.to_vec2()) / self.view.zoom;
+                        self.senders
+                            .send_sim(SmarticlesEvent::TargetPositionChange(self.target_position));
+                    }
+                }
+
+                paint.circle_stroke(
+                    center + self.target_position * self.view.zoom,
+                    20.,
+                    Stroke::new(2., Color32::WHITE),
+                );
+
+                let pos = Vec2::new(resp.rect.right() - 30., resp.rect.bottom() - 10.);
+                paint.line_segment(
+                    [
+                        (pos - Vec2::new(10. * self.view.zoom, 0.)).to_pos2(),
+                        pos.to_pos2(),
+                    ],
+                    Stroke::new(4., Color32::WHITE),
+                );
+                paint.text(
+                    (pos + Vec2::new(10., 0.)).to_pos2(),
+                    Align2::LEFT_CENTER,
+                    "10",
+                    FontId::monospace(14.),
+                    Color32::WHITE,
+                );
+
+                for c in 0..CLASS_COUNT {
                     let class = &self.classes[c];
 
-                    for p in 0..self.shared.particle_counts[c] {
+                    for p in 0..self.particle_counts[c] {
                         let pos = center + self.particle_positions[(c, p)] * self.view.zoom;
                         if paint.clip_rect().contains(pos) {
                             paint.circle_filled(
@@ -613,7 +709,9 @@ impl App for Smarticles {
 
                 // if self.shared.simulation_state != SimulationState::Stopped {
                 //     paint.circle_stroke(
-                //         center + self.particle_positions[self.selected_particle] * self.view.zoom,
+                //         center
+                //             + self.shared.particle_positions[self.selected_particle]
+                //                 * self.view.zoom,
                 //         PARTICLE_DIAMETER + 4.,
                 //         Stroke::new(1., Color32::WHITE),
                 //     );
