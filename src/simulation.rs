@@ -38,7 +38,7 @@ pub fn calculate_force(radius: f32, force: f32) -> f32 {
 struct Cell(i32, i32);
 
 impl Cell {
-    pub const CELL_SIZE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD + 2.;
+    pub const CELL_SIZE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD + 0.1;
 
     pub fn from_position(position: Vec2) -> Self {
         Self(
