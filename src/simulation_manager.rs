@@ -4,8 +4,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::debug;
-
 use crate::{simulation::Simulation, Senders, SmarticlesEvent};
 
 /// Min update interval in ms (when the simulation is running).
@@ -19,7 +17,7 @@ pub enum SimulationState {
     Running,
 }
 
-pub struct SimulationBackend {
+pub struct SimulationManager {
     simulation_state: SimulationState,
 
     simulation: Simulation,
@@ -28,7 +26,7 @@ pub struct SimulationBackend {
     receiver: Receiver<SmarticlesEvent>,
 }
 
-impl SimulationBackend {
+impl SimulationManager {
     pub fn new(senders: Senders, receiver: Receiver<SmarticlesEvent>) -> Self {
         Self {
             simulation_state: SimulationState::Paused,
@@ -42,7 +40,6 @@ impl SimulationBackend {
 
     pub fn update(&mut self) -> bool {
         let events = self.receiver.try_iter().collect::<Vec<_>>();
-        debug!("Received events {:?}", events);
         for event in events {
             match event {
                 SmarticlesEvent::Quit => return false,
@@ -90,7 +87,6 @@ impl SimulationBackend {
                 sleep(UPDATE_INTERVAL - elapsed);
             }
         } else {
-            debug!("simulation paused, update interval reduced");
             sleep(PAUSED_UPDATE_INTERVAL);
         }
 

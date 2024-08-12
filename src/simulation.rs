@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::f32::consts::{PI, TAU};
 
-use egui::Vec2;
+use eframe::egui::Vec2;
 use rand::random;
 use rayon::prelude::*;
 
-use crate::mat::Mat2D;
-use crate::{CLASS_COUNT, MAX_PARTICLE_COUNT};
+use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 
 pub const FIRST_THRESHOLD: f32 = 10.;
 pub const SECOND_THRESHOLD: f32 = 10.;

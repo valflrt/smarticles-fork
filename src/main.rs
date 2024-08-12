@@ -4,17 +4,19 @@ use std::{
     time::Duration,
 };
 
-use app::simulation::SimulationBackend;
-use app::ui::Ui;
-use eframe::epaint::Color32;
-use eframe::NativeOptions;
-use egui::color::Hsva;
-use egui::Vec2;
+use eframe::{
+    egui::{Vec2, ViewportBuilder},
+    epaint::{Color32, Hsva},
+    NativeOptions,
+};
 use mat::Mat2D;
+
+use crate::{app::SmarticlesApp, simulation_manager::SimulationManager};
 
 mod app;
 mod mat;
 mod simulation;
+mod simulation_manager;
 
 // IDEA Add recordings ? By exporting positions of all the
 // particles each frame ? That would make around 8000 postions
@@ -47,12 +49,9 @@ const MIN_FORCE: f32 = -MAX_FORCE;
 
 fn main() {
     let options = NativeOptions {
-        // initial_window_size: Some(Vec2::new(1600., 900.)),
-        fullscreen: true,
+        viewport: ViewportBuilder::default().with_fullscreen(true),
         ..Default::default()
     };
-
-    env_logger::init();
 
     let (ui_sender, ui_receiver) = channel::<SmarticlesEvent>();
     let (sim_sender, sim_receiver) = channel::<SmarticlesEvent>();
@@ -67,7 +66,7 @@ fn main() {
 
             let senders_clone = senders.clone();
             let simulation_handle = thread::spawn(move || {
-                let mut sim_backend = SimulationBackend::new(senders_clone, sim_receiver);
+                let mut sim_backend = SimulationManager::new(senders_clone, sim_receiver);
 
                 thread::sleep(Duration::from_millis(500));
 
@@ -79,7 +78,7 @@ fn main() {
                 }
             });
 
-            Box::new(Ui::new(
+            Ok(Box::new(SmarticlesApp::new(
                 ["α", "β", "γ", "δ", "ε", "ζ", "η", "θ"]
                     .iter()
                     .take(CLASS_COUNT)
@@ -96,9 +95,10 @@ fn main() {
                 senders,
                 ui_receiver,
                 Some(simulation_handle),
-            ))
+            )))
         }),
-    );
+    )
+    .unwrap();
 }
 
 #[derive(Debug, Clone)]
