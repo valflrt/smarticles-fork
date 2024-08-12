@@ -37,7 +37,7 @@ use super::{
 
 /// Display diameter of the particles in the simulation (in
 /// pixels).
-const PARTICLE_DIAMETER: f32 = 0.5;
+const PARTICLE_DIAMETER: f32 = 0.6;
 
 const DEFAULT_ZOOM: f32 = 2.;
 const MIN_ZOOM: f32 = 0.1;
@@ -628,7 +628,7 @@ impl App for Ui {
 
         CentralPanel::default()
             .frame(egui::Frame {
-                fill: Color32::from_rgba_unmultiplied(12, 12, 12, 255),
+                fill: Color32::from_rgba_unmultiplied(10, 10, 10, 255),
                 ..Default::default()
             })
             .show(ctx, |ui| {

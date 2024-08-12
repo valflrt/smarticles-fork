@@ -132,7 +132,7 @@ fn main() {
                     .enumerate()
                     .map(|(i, class_name)| {
                         let [r, g, b] =
-                            Hsva::new((i as f32) / (CLASS_COUNT as f32), 0.925, 0.8, 1.).to_srgb();
+                            Hsva::new((i as f32) / (CLASS_COUNT as f32), 0.9, 0.9, 1.).to_srgb();
                         (class_name, Color32::from_rgb(r, g, b))
                     })
                     .collect::<Vec<(&str, Color32)>>()
