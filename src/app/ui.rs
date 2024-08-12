@@ -20,7 +20,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 
-use crate::simulation::{calculate_force, FIRST_THRESHOLD, SECOND_THRESHOLD};
+use crate::simulation::{compute_force, FIRST_THRESHOLD, SECOND_THRESHOLD};
 use crate::{mat::Mat2D, Senders};
 use crate::{
     SmarticlesEvent, CLASS_COUNT, MAX_FORCE, MAX_PARTICLE_COUNT, MIN_FORCE, MIN_PARTICLE_COUNT,
@@ -79,7 +79,7 @@ pub struct Ui {
     history: VecDeque<String>,
     selected_history_entry: usize,
 
-    calculation_time: u128,
+    computation_time: u128,
 
     words: Vec<String>,
 
@@ -138,7 +138,7 @@ impl Ui {
             history: VecDeque::new(),
             selected_history_entry: 0,
 
-            calculation_time: 0,
+            computation_time: 0,
 
             words,
 
@@ -254,7 +254,7 @@ impl App for Ui {
             match event {
                 SmarticlesEvent::SimulationResults(positions, elapsed) => {
                     if let Some(elapsed) = elapsed {
-                        self.calculation_time = elapsed.as_millis();
+                        self.computation_time = elapsed.as_millis();
                     }
                     self.particle_positions = positions;
                 }
@@ -358,8 +358,8 @@ impl App for Ui {
             });
 
             ui.horizontal(|ui| {
-                ui.label("calculation time:");
-                ui.code(self.calculation_time.to_string() + "ms");
+                ui.label("computation time:");
+                ui.code(self.computation_time.to_string() + "ms");
             });
 
             if self.history.len() > 1 {
@@ -427,7 +427,7 @@ impl App for Ui {
                             let x = i as f32 / 1000.;
                             [
                                 x as f64,
-                                calculate_force(x, self.force_matrix[self.selected_param]) as f64,
+                                compute_force(x, self.force_matrix[self.selected_param]) as f64,
                             ]
                         })
                         .collect();

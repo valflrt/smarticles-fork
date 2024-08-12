@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::f32::consts::TAU;
+use std::f32::consts::{PI, TAU};
 
 use egui::Vec2;
 use rand::random;
@@ -16,13 +16,9 @@ pub const PROXIMITY_FORCE: f32 = -60.;
 const DAMPING_FACTOR: f32 = 0.1;
 const FORCE_SCALING_FACTOR: f32 = 0.0005;
 
-const SPAWN_DENSITY: f32 = 0.03;
+const SPAWN_DENSITY: f32 = 12.;
 
-pub fn spawn_area_radius(total_particles: f32) -> f32 {
-    total_particles * SPAWN_DENSITY
-}
-
-pub fn calculate_force(radius: f32, force: f32) -> f32 {
+pub fn compute_force(radius: f32, force: f32) -> f32 {
     if radius < FIRST_THRESHOLD {
         (radius / FIRST_THRESHOLD - 1.) * PROXIMITY_FORCE
     } else if radius < FIRST_THRESHOLD + SECOND_THRESHOLD {
@@ -38,7 +34,7 @@ pub fn calculate_force(radius: f32, force: f32) -> f32 {
 struct Cell(i32, i32);
 
 impl Cell {
-    pub const CELL_SIZE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD + 2.;
+    pub const CELL_SIZE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD + 0.1;
 
     pub fn from_position(position: Vec2) -> Self {
         Self(
@@ -90,7 +86,7 @@ impl Simulation {
             .collect::<Vec<_>>()
     }
 
-    fn calculate_particle_update(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
+    fn compute_position_updates(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
         (0..CLASS_COUNT)
             .into_par_iter()
             .flat_map(|c1| {
@@ -110,7 +106,7 @@ impl Simulation {
 
                             let direction = other_pos - pos;
                             force -= direction.normalized()
-                                * calculate_force(direction.length(), force_factor)
+                                * compute_force(direction.length(), force_factor)
                                 * FORCE_SCALING_FACTOR;
                         }
 
@@ -127,7 +123,7 @@ impl Simulation {
     }
 
     pub fn move_particles(&mut self) {
-        self.calculate_particle_update()
+        self.compute_position_updates()
             .iter()
             .for_each(|(index, (pos, new_pos))| {
                 self.particle_prev_positions[*index] = *pos;
@@ -152,7 +148,8 @@ impl Simulation {
     pub fn spawn(&mut self) {
         self.reset_particles_positions();
 
-        let spawn_radius = spawn_area_radius(self.particle_counts.iter().sum::<usize>() as f32);
+        let spawn_radius =
+            (self.particle_counts.iter().sum::<usize>() as f32 / PI).sqrt() * SPAWN_DENSITY;
 
         for c in 0..CLASS_COUNT {
             for p in 0..self.particle_counts[c] {
@@ -169,9 +166,16 @@ impl Simulation {
     }
 
     pub fn organize_particles(&mut self) {
-        self.cell_map
-            .values_mut()
-            .for_each(|particles| particles.clear());
+        // Remove empty cells from the hashmap and clear non-empty
+        // ones
+        self.cell_map.retain(|_, particles| {
+            if !particles.is_empty() {
+                particles.clear();
+                true
+            } else {
+                false
+            }
+        });
         for c in 0..CLASS_COUNT {
             for p in 0..self.particle_counts[c] {
                 let particle_index = (c, p);

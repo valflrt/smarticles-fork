@@ -106,3 +106,4 @@
   - `heuchs_scarman_endorsor`
   - `spinouts_amlet_hatsful`
   - `spitter_relate_longwool`
+  - `mulct_chukor_caama`

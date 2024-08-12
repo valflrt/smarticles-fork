@@ -32,7 +32,7 @@ const CLASS_COUNT: usize = 6;
 /// Min particle count.
 const MIN_PARTICLE_COUNT: usize = 0;
 /// Maximal particle count per class.
-const MAX_PARTICLE_COUNT: usize = 8000;
+const MAX_PARTICLE_COUNT: usize = 20000;
 /// When randomizing particle counts, this is the lowest
 /// possible value, this prevent random particle counts from
 /// being under this value.
