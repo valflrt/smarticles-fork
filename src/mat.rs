@@ -5,9 +5,8 @@ use std::{
 
 use rand::{prelude::Distribution, Rng};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Mat2D<T> {
     num_rows: usize,
     num_columns: usize,

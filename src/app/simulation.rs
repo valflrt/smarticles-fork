@@ -4,18 +4,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use egui::Vec2;
 use log::debug;
 
-use crate::{
-    ai::net::Network,
-    app::training::{
-        adapt_input, calc_geometric_centers_and_mean_distances, setup_simulation_for_network,
-        INFERENCE_TICK_INTERVAL,
-    },
-    simulation::Simulation,
-    Senders, SmarticlesEvent, MAX_FORCE,
-};
+use crate::{simulation::Simulation, Senders, SmarticlesEvent};
 
 /// Min update interval in ms (when the simulation is running).
 const UPDATE_INTERVAL: Duration = Duration::from_millis(30);
@@ -28,21 +19,10 @@ pub enum SimulationState {
     Running,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum NetworkState {
-    Stopped,
-    Running,
-}
-
 pub struct SimulationBackend {
     simulation_state: SimulationState,
 
     simulation: Simulation,
-
-    network: Option<Network>,
-    steps: u8,
-    network_state: NetworkState,
-    target_position: Vec2,
 
     senders: Senders,
     receiver: Receiver<SmarticlesEvent>,
@@ -54,11 +34,6 @@ impl SimulationBackend {
             simulation_state: SimulationState::Paused,
 
             simulation: Simulation::default(),
-
-            network: None,
-            steps: 0,
-            network_state: NetworkState::Stopped,
-            target_position: Vec2::ZERO,
 
             senders,
             receiver,
@@ -85,23 +60,6 @@ impl SimulationBackend {
                 }
                 SmarticlesEvent::SimulationPause => self.simulation_state = SimulationState::Paused,
 
-                SmarticlesEvent::InferenceNetworkChange(network) => {
-                    self.network = Some(network);
-                }
-                SmarticlesEvent::NetworkStart => {
-                    setup_simulation_for_network(&mut self.simulation);
-                    self.senders.send_ui(SmarticlesEvent::ParticleCountsUpdate(
-                        self.simulation.particle_counts,
-                    ));
-                    self.simulation.spawn();
-                    self.senders.send_ui(SmarticlesEvent::SimulationResults(
-                        self.simulation.particle_positions.to_owned(),
-                        None,
-                    ));
-                    self.network_state = NetworkState::Running;
-                }
-                SmarticlesEvent::NetworkStop => self.network_state = NetworkState::Stopped,
-
                 SmarticlesEvent::ForceMatrixChange(force_matrix) => {
                     self.simulation.force_matrix = force_matrix
                 }
@@ -114,10 +72,6 @@ impl SimulationBackend {
                     self.simulation.reset_particles_positions();
                 }
 
-                SmarticlesEvent::TargetPositionChange(target_position) => {
-                    self.target_position = target_position
-                }
-
                 _ => {}
             }
         }
@@ -126,33 +80,6 @@ impl SimulationBackend {
             let start_time = Instant::now();
             self.simulation.move_particles();
             let elapsed = start_time.elapsed();
-
-            if self.network_state == NetworkState::Running {
-                if let Some(network) = &self.network {
-                    if self.steps == INFERENCE_TICK_INTERVAL {
-                        let (gcs, ggc) =
-                            calc_geometric_centers_and_mean_distances(&self.simulation);
-
-                        let ggc_to_target_direction = self.target_position - ggc;
-
-                        let mut output = network.infer(adapt_input(
-                            ggc_to_target_direction.normalized(),
-                            gcs,
-                            self.simulation.force_matrix.to_owned(),
-                        ));
-
-                        output.iter_mut().for_each(|x| *x *= MAX_FORCE);
-                        *self.simulation.force_matrix.vec_mut() = output;
-
-                        self.senders.send_ui(SmarticlesEvent::ForceMatrixChange(
-                            self.simulation.force_matrix.to_owned(),
-                        ));
-                        self.steps = 0;
-                    } else {
-                        self.steps += 1;
-                    }
-                }
-            }
 
             self.senders.send_ui(SmarticlesEvent::SimulationResults(
                 self.simulation.particle_positions.to_owned(),

@@ -182,10 +182,7 @@ impl Simulation {
             for p in 0..self.particle_counts[c] {
                 let particle_index = (c, p);
                 let cell = Cell::from_position(self.particle_positions[particle_index]);
-                self.cell_map
-                    .entry(cell)
-                    .or_insert(Vec::new())
-                    .push(particle_index);
+                self.cell_map.entry(cell).or_default().push(particle_index);
             }
         }
     }

@@ -1,21 +1,17 @@
-use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Sender};
-use std::time::Duration;
-use std::{fs, thread};
+use std::{
+    sync::mpsc::{channel, Sender},
+    thread,
+    time::Duration,
+};
 
-use ai::batch_training::Batch;
-use ai::net::{ActivationFn, Layer, Network};
 use app::simulation::SimulationBackend;
-use app::training::{TrainingBackend, BATCH_SIZE, NETWORK_INPUT_SIZE, NETWORK_OUTPUT_SIZE};
 use app::ui::Ui;
 use eframe::epaint::Color32;
 use eframe::NativeOptions;
 use egui::color::Hsva;
 use egui::Vec2;
 use mat::Mat2D;
-use postcard::from_bytes;
 
-mod ai;
 mod app;
 mod mat;
 mod simulation;
@@ -50,32 +46,6 @@ const MAX_FORCE: f32 = 100.;
 const MIN_FORCE: f32 = -MAX_FORCE;
 
 fn main() {
-    let batch = if Path::new("./batches/batch_gen_0").exists() {
-        let mut batch_gen = 0;
-        let mut batch_path = Path::new("./batches/batch_gen_0").to_path_buf();
-        let mut gap = 20;
-        while gap > 0 {
-            let path: PathBuf = format!("./batches/batch_gen_{}", batch_gen).into();
-            if path.exists() {
-                gap = 20;
-                batch_path = path;
-            } else {
-                gap -= 1;
-            }
-            batch_gen += 1;
-        }
-        from_bytes::<Batch>(&fs::read(batch_path).unwrap()).unwrap()
-    } else {
-        let batch = Batch::new(Vec::from_iter((0..BATCH_SIZE).map(|_| {
-            Network::new([
-                Layer::random(NETWORK_INPUT_SIZE, 12, ActivationFn::LeakyRelu),
-                Layer::random(12, NETWORK_OUTPUT_SIZE, ActivationFn::Tanh),
-            ])
-        })));
-        batch.save();
-        batch
-    };
-
     let options = NativeOptions {
         // initial_window_size: Some(Vec2::new(1600., 900.)),
         fullscreen: true,
@@ -86,29 +56,14 @@ fn main() {
 
     let (ui_sender, ui_receiver) = channel::<SmarticlesEvent>();
     let (sim_sender, sim_receiver) = channel::<SmarticlesEvent>();
-    let (train_sender, train_receiver) = channel::<SmarticlesEvent>();
 
-    let senders = Senders::new(ui_sender, sim_sender, train_sender);
+    let senders = Senders::new(ui_sender, sim_sender);
 
     eframe::run_native(
         "Smarticles",
         options,
         Box::new(|cc| {
             let frame = cc.egui_ctx.clone();
-
-            let generation = batch.generation;
-
-            let senders_clone = senders.clone();
-            let training_handle = thread::spawn(move || {
-                let mut training_backend =
-                    TrainingBackend::new(batch, senders_clone, train_receiver);
-
-                loop {
-                    if !training_backend.update() {
-                        break;
-                    };
-                }
-            });
 
             let senders_clone = senders.clone();
             let simulation_handle = thread::spawn(move || {
@@ -138,11 +93,9 @@ fn main() {
                     .collect::<Vec<(&str, Color32)>>()
                     .try_into()
                     .unwrap(),
-                generation,
                 senders,
                 ui_receiver,
                 Some(simulation_handle),
-                Some(training_handle),
             ))
         }),
     );
@@ -152,19 +105,13 @@ fn main() {
 struct Senders {
     ui_sender: Sender<SmarticlesEvent>,
     sim_sender: Sender<SmarticlesEvent>,
-    training_sender: Sender<SmarticlesEvent>,
 }
 
 impl Senders {
-    pub fn new(
-        ui_sender: Sender<SmarticlesEvent>,
-        sim_sender: Sender<SmarticlesEvent>,
-        training_sender: Sender<SmarticlesEvent>,
-    ) -> Self {
+    pub fn new(ui_sender: Sender<SmarticlesEvent>, sim_sender: Sender<SmarticlesEvent>) -> Self {
         Senders {
             ui_sender,
             sim_sender,
-            training_sender,
         }
     }
 
@@ -173,9 +120,6 @@ impl Senders {
     }
     pub fn send_sim(&self, event: SmarticlesEvent) {
         self.sim_sender.send(event).unwrap()
-    }
-    pub fn send_training(&self, event: SmarticlesEvent) {
-        self.training_sender.send(event).unwrap()
     }
 }
 
@@ -191,18 +135,7 @@ enum SmarticlesEvent {
     ForceMatrixChange(Mat2D<f32>),
     ParticleCountsUpdate([usize; CLASS_COUNT]),
 
-    StartTraining(usize),
-    GenerationChange(usize),
-    NetworkRanking(Vec<(f32, Network)>),
-    EvaluateNetworks,
-
     SimulationStart,
     SimulationPause,
     SimulationReset,
-
-    NetworkStart,
-    NetworkStop,
-
-    InferenceNetworkChange(Network),
-    TargetPositionChange(Vec2),
 }

@@ -10,7 +10,7 @@ use eframe::epaint::Color32;
 use eframe::{App, Frame};
 use egui::{
     plot::{Line, Plot, PlotPoints},
-    Button, Vec2,
+    Vec2,
 };
 use egui::{
     Align2, CentralPanel, ComboBox, Context, FontId, ScrollArea, Sense, SidePanel, Slider, Stroke,
@@ -20,20 +20,14 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 
-use crate::{
-    ai::net::Network,
-    simulation::{calculate_force, FIRST_THRESHOLD, SECOND_THRESHOLD},
-};
+use crate::simulation::{calculate_force, FIRST_THRESHOLD, SECOND_THRESHOLD};
 use crate::{mat::Mat2D, Senders};
 use crate::{
     SmarticlesEvent, CLASS_COUNT, MAX_FORCE, MAX_PARTICLE_COUNT, MIN_FORCE, MIN_PARTICLE_COUNT,
     RANDOM_MAX_PARTICLE_COUNT, RANDOM_MIN_PARTICLE_COUNT,
 };
 
-use super::{
-    simulation::{NetworkState, SimulationState},
-    training::random_target_position,
-};
+use super::simulation::SimulationState;
 
 /// Display diameter of the particles in the simulation (in
 /// pixels).
@@ -45,20 +39,6 @@ const MAX_ZOOM: f32 = 30.;
 const ZOOM_FACTOR: f32 = 1.08;
 
 const MAX_HISTORY_LEN: usize = 10;
-
-#[derive(Debug, PartialEq)]
-enum TrainingState {
-    Running { target_generation: usize },
-    Stopped,
-}
-impl TrainingState {
-    pub fn is_running(&self) -> bool {
-        match self {
-            TrainingState::Running { .. } => true,
-            _ => false,
-        }
-    }
-}
 
 pub struct View {
     zoom: f32,
@@ -107,29 +87,19 @@ pub struct Ui {
     receiver: Receiver<SmarticlesEvent>,
 
     simulation_handle: Option<JoinHandle<()>>,
-    training_handle: Option<JoinHandle<()>>,
 
-    // TODO: group the next fields into a new struct
-    particle_positions: Mat2D<Vec2>,
     particle_counts: [usize; CLASS_COUNT],
+    particle_positions: Mat2D<Vec2>,
     force_matrix: Mat2D<f32>,
     simulation_state: SimulationState,
-    network_state: NetworkState,
-    network_ranking: Option<Vec<(f32, Network)>>,
-    selected_network: usize,
-    target_position: Vec2,
-    training_state: TrainingState,
-    generation: usize,
 }
 
 impl Ui {
     pub fn new<S>(
         classes: [(S, Color32); CLASS_COUNT],
-        generation: usize,
         senders: Senders,
         receiver: Receiver<SmarticlesEvent>,
         simulation_handle: Option<JoinHandle<()>>,
-        training_handle: Option<JoinHandle<()>>,
     ) -> Self
     where
         S: ToString,
@@ -149,9 +119,6 @@ impl Ui {
                 Some(w.to_string())
             })
             .collect();
-
-        let target_position = random_target_position(Vec2::ZERO);
-        senders.send_sim(SmarticlesEvent::TargetPositionChange(target_position));
 
         Self {
             seed: "".to_string(),
@@ -179,18 +146,11 @@ impl Ui {
             receiver,
 
             simulation_handle,
-            training_handle,
 
-            particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
             particle_counts: [200; CLASS_COUNT],
+            particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
             force_matrix: Mat2D::filled_with(0., CLASS_COUNT, CLASS_COUNT),
             simulation_state: SimulationState::Paused,
-            network_state: NetworkState::Stopped,
-            network_ranking: None,
-            selected_network: 0,
-            target_position,
-            training_state: TrainingState::Stopped,
-            generation,
         }
     }
 
@@ -307,14 +267,6 @@ impl App for Ui {
                     self.particle_counts = particle_counts;
                 }
 
-                SmarticlesEvent::GenerationChange(generation) => {
-                    self.generation = generation;
-                }
-                SmarticlesEvent::NetworkRanking(networks_and_scores) => {
-                    self.training_state = TrainingState::Stopped;
-                    self.network_ranking = Some(networks_and_scores);
-                }
-
                 _ => {}
             }
         }
@@ -381,11 +333,7 @@ impl App for Ui {
 
                 if ui.button("quit").on_hover_text("exit smarticles").clicked() {
                     self.senders.send_sim(SmarticlesEvent::Quit);
-                    self.senders.send_training(SmarticlesEvent::Quit);
                     if let Some(handle) = self.simulation_handle.take() {
-                        handle.join().unwrap();
-                    }
-                    if let Some(handle) = self.training_handle.take() {
                         handle.join().unwrap();
                     }
                     frame.close();
@@ -489,88 +437,6 @@ impl App for Ui {
                         .show(ui, |plot_ui| plot_ui.line(line));
                 },
             );
-
-            ui.collapsing("training menu", |ui| {
-                ui.horizontal(|ui| {
-                    if let TrainingState::Running { target_generation } = self.training_state {
-                        ui.label("generation");
-                        ui.code(format!("{} -> {}", self.generation, target_generation));
-                        ui.label("training...");
-                        ui.spinner();
-                    } else {
-                        ui.label("generation:");
-                        ui.code(format!("{}", self.generation));
-                    }
-                });
-
-                if ui
-                    .add_enabled(
-                        !self.training_state.is_running(),
-                        Button::new("evaluate networks"),
-                    )
-                    .clicked()
-                {
-                    self.senders
-                        .send_training(SmarticlesEvent::EvaluateNetworks);
-                }
-
-                [1, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 3000]
-                    .iter()
-                    .copied()
-                    .for_each(|gen_count| {
-                        if ui
-                            .add_enabled(
-                                !self.training_state.is_running(),
-                                Button::new(format!("start {} generations", gen_count)),
-                            )
-                            .clicked()
-                        {
-                            self.training_state = TrainingState::Running {
-                                target_generation: self.generation + gen_count,
-                            };
-                            self.senders
-                                .send_sim(SmarticlesEvent::StartTraining(gen_count));
-                            self.senders
-                                .send_training(SmarticlesEvent::StartTraining(gen_count));
-                        }
-                    });
-
-                if let Some(ranking) = &self.network_ranking {
-                    ui.label("network:");
-                    ComboBox::from_id_source("network").width(160.).show_index(
-                        ui,
-                        &mut self.selected_network,
-                        ranking.len(),
-                        |i| format!("score: {:.0}", ranking[i].0),
-                    );
-
-                    if self.network_state == NetworkState::Running {
-                        if ui
-                            .add_enabled(
-                                !self.training_state.is_running(),
-                                Button::new("pause network inference"),
-                            )
-                            .clicked()
-                        {
-                            self.network_state = NetworkState::Stopped;
-                            self.senders.send_sim(SmarticlesEvent::NetworkStop);
-                        }
-                    } else if ui
-                        .add_enabled(
-                            !self.training_state.is_running(),
-                            Button::new("start network inference"),
-                        )
-                        .clicked()
-                    {
-                        self.network_state = NetworkState::Running;
-                        self.senders
-                            .send_sim(SmarticlesEvent::InferenceNetworkChange(
-                                ranking[self.selected_network].1.clone(),
-                            ));
-                        self.senders.send_sim(SmarticlesEvent::NetworkStart);
-                    }
-                }
-            });
 
             ScrollArea::vertical().show(ui, |ui| {
                 for i in 0..CLASS_COUNT {
@@ -678,23 +544,7 @@ impl App for Ui {
                     } else {
                         self.view.dragging = false;
                     }
-
-                    if ctx
-                        .input()
-                        .pointer
-                        .button_clicked(egui::PointerButton::Secondary)
-                    {
-                        self.target_position = (interact_pos.to_vec2() - center) / self.view.zoom;
-                        self.senders
-                            .send_sim(SmarticlesEvent::TargetPositionChange(self.target_position));
-                    }
                 }
-
-                paint.circle_stroke(
-                    (center + self.target_position * self.view.zoom).to_pos2(),
-                    25. * self.view.zoom,
-                    Stroke::new(2., Color32::WHITE),
-                );
 
                 let pos = Vec2::new(resp.rect.right() - 30., resp.rect.bottom() - 10.);
                 paint.line_segment(
