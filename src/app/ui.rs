@@ -10,14 +10,13 @@ use eframe::epaint::Color32;
 use eframe::{App, Frame};
 use egui::{
     plot::{Line, Plot, PlotPoints},
-    Button,
+    Button, Vec2,
 };
 use egui::{
     Align2, CentralPanel, ComboBox, Context, FontId, ScrollArea, Sense, SidePanel, Slider, Stroke,
-    Vec2,
 };
+use rand::distributions::Open01;
 use rand::rngs::SmallRng;
-use rand::{distributions::Open01, random};
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 
@@ -31,11 +30,14 @@ use crate::{
     RANDOM_MAX_PARTICLE_COUNT, RANDOM_MIN_PARTICLE_COUNT,
 };
 
-use super::simulation::{NetworkState, SimulationState};
+use super::{
+    simulation::{NetworkState, SimulationState},
+    training::random_target_position,
+};
 
 /// Display diameter of the particles in the simulation (in
 /// pixels).
-const PARTICLE_DIAMETER: f32 = 1.;
+const PARTICLE_DIAMETER: f32 = 0.5;
 
 const DEFAULT_ZOOM: f32 = 2.;
 const MIN_ZOOM: f32 = 0.1;
@@ -46,13 +48,13 @@ const MAX_HISTORY_LEN: usize = 10;
 
 #[derive(Debug, PartialEq)]
 enum TrainingState {
-    Running,
+    Running { target_generation: usize },
     Stopped,
 }
 impl TrainingState {
     pub fn is_running(&self) -> bool {
         match self {
-            TrainingState::Running => true,
+            TrainingState::Running { .. } => true,
             _ => false,
         }
     }
@@ -113,15 +115,17 @@ pub struct Ui {
     force_matrix: Mat2D<f32>,
     simulation_state: SimulationState,
     network_state: NetworkState,
-    networks: Option<Vec<Network>>,
+    network_ranking: Option<Vec<(f32, Network)>>,
     selected_network: usize,
     target_position: Vec2,
     training_state: TrainingState,
+    generation: usize,
 }
 
 impl Ui {
     pub fn new<S>(
         classes: [(S, Color32); CLASS_COUNT],
+        generation: usize,
         senders: Senders,
         receiver: Receiver<SmarticlesEvent>,
         simulation_handle: Option<JoinHandle<()>>,
@@ -146,8 +150,7 @@ impl Ui {
             })
             .collect();
 
-        let target_position =
-            Vec2::new(random::<f32>() * 2. - 1., random::<f32>() * 2. - 1.) * 5000.;
+        let target_position = random_target_position(Vec2::ZERO);
         senders.send_sim(SmarticlesEvent::TargetPositionChange(target_position));
 
         Self {
@@ -183,10 +186,11 @@ impl Ui {
             force_matrix: Mat2D::filled_with(0., CLASS_COUNT, CLASS_COUNT),
             simulation_state: SimulationState::Paused,
             network_state: NetworkState::Stopped,
-            networks: None,
+            network_ranking: None,
             selected_network: 0,
             target_position,
             training_state: TrainingState::Stopped,
+            generation,
         }
     }
 
@@ -303,9 +307,12 @@ impl App for Ui {
                     self.particle_counts = particle_counts;
                 }
 
-                SmarticlesEvent::Networks(networks) => {
+                SmarticlesEvent::GenerationChange(generation) => {
+                    self.generation = generation;
+                }
+                SmarticlesEvent::NetworkRanking(networks_and_scores) => {
                     self.training_state = TrainingState::Stopped;
-                    self.networks = Some(networks);
+                    self.network_ranking = Some(networks_and_scores);
                 }
 
                 _ => {}
@@ -484,14 +491,30 @@ impl App for Ui {
             );
 
             ui.collapsing("training menu", |ui| {
-                if self.training_state == TrainingState::Running {
-                    ui.horizontal(|ui| {
-                        ui.label("Training...");
+                ui.horizontal(|ui| {
+                    if let TrainingState::Running { target_generation } = self.training_state {
+                        ui.label("generation");
+                        ui.code(format!("{} -> {}", self.generation, target_generation));
+                        ui.label("training...");
                         ui.spinner();
-                    });
+                    } else {
+                        ui.label("generation:");
+                        ui.code(format!("{}", self.generation));
+                    }
+                });
+
+                if ui
+                    .add_enabled(
+                        !self.training_state.is_running(),
+                        Button::new("evaluate networks"),
+                    )
+                    .clicked()
+                {
+                    self.senders
+                        .send_training(SmarticlesEvent::EvaluateNetworks);
                 }
 
-                [1, 10, 20, 50, 100, 200, 500, 1000]
+                [1, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 3000]
                     .iter()
                     .copied()
                     .for_each(|gen_count| {
@@ -502,7 +525,9 @@ impl App for Ui {
                             )
                             .clicked()
                         {
-                            self.training_state = TrainingState::Running;
+                            self.training_state = TrainingState::Running {
+                                target_generation: self.generation + gen_count,
+                            };
                             self.senders
                                 .send_sim(SmarticlesEvent::StartTraining(gen_count));
                             self.senders
@@ -510,13 +535,13 @@ impl App for Ui {
                         }
                     });
 
-                if let Some(networks) = &self.networks {
+                if let Some(ranking) = &self.network_ranking {
                     ui.label("network:");
-                    ComboBox::from_id_source("network").show_index(
+                    ComboBox::from_id_source("network").width(160.).show_index(
                         ui,
                         &mut self.selected_network,
-                        networks.len(),
-                        |i| format!("#{}", i),
+                        ranking.len(),
+                        |i| format!("score: {:.0}", ranking[i].0),
                     );
 
                     if self.network_state == NetworkState::Running {
@@ -540,7 +565,7 @@ impl App for Ui {
                         self.network_state = NetworkState::Running;
                         self.senders
                             .send_sim(SmarticlesEvent::InferenceNetworkChange(
-                                networks[self.selected_network].clone(),
+                                ranking[self.selected_network].1.clone(),
                             ));
                         self.senders.send_sim(SmarticlesEvent::NetworkStart);
                     }
@@ -631,7 +656,7 @@ impl App for Ui {
                         self.view.drag_start_view_pos + drag_delta.to_vec2() / self.view.zoom;
                 }
 
-                let center = resp.rect.center()
+                let center = resp.rect.center().to_vec2()
                     + if self.follow_selected_particle {
                         self.view.pos - self.particle_positions[self.selected_particle]
                     } else {
@@ -659,16 +684,15 @@ impl App for Ui {
                         .pointer
                         .button_clicked(egui::PointerButton::Secondary)
                     {
-                        self.target_position =
-                            (interact_pos.to_vec2() - center.to_vec2()) / self.view.zoom;
+                        self.target_position = (interact_pos.to_vec2() - center) / self.view.zoom;
                         self.senders
                             .send_sim(SmarticlesEvent::TargetPositionChange(self.target_position));
                     }
                 }
 
                 paint.circle_stroke(
-                    center + self.target_position * self.view.zoom,
-                    20.,
+                    (center + self.target_position * self.view.zoom).to_pos2(),
+                    25. * self.view.zoom,
                     Stroke::new(2., Color32::WHITE),
                 );
 
@@ -692,15 +716,16 @@ impl App for Ui {
                     let class = &self.classes[c];
 
                     for p in 0..self.particle_counts[c] {
-                        let pos = center + self.particle_positions[(c, p)] * self.view.zoom;
+                        let pos =
+                            (center + self.particle_positions[(c, p)] * self.view.zoom).to_pos2();
                         if paint.clip_rect().contains(pos) {
                             paint.circle_filled(
                                 pos,
                                 if (c, p) == self.selected_particle {
-                                    PARTICLE_DIAMETER + 3.
+                                    PARTICLE_DIAMETER * 3.
                                 } else {
                                     PARTICLE_DIAMETER
-                                },
+                                } * self.view.zoom,
                                 class.color,
                             );
                         }

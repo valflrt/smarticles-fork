@@ -1,17 +1,19 @@
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
-use std::thread;
 use std::time::Duration;
+use std::{fs, thread};
 
 use ai::batch_training::Batch;
 use ai::net::{ActivationFn, Layer, Network};
 use app::simulation::SimulationBackend;
-use app::training::{TrainingBackend, NETWORK_INPUT_SIZE, NETWORK_OUTPUT_SIZE};
+use app::training::{TrainingBackend, BATCH_SIZE, NETWORK_INPUT_SIZE, NETWORK_OUTPUT_SIZE};
 use app::ui::Ui;
 use eframe::epaint::Color32;
 use eframe::NativeOptions;
 use egui::color::Hsva;
 use egui::Vec2;
 use mat::Mat2D;
+use postcard::from_bytes;
 
 mod ai;
 mod app;
@@ -34,7 +36,7 @@ const CLASS_COUNT: usize = 6;
 /// Min particle count.
 const MIN_PARTICLE_COUNT: usize = 0;
 /// Maximal particle count per class.
-const MAX_PARTICLE_COUNT: usize = 1200;
+const MAX_PARTICLE_COUNT: usize = 8000;
 /// When randomizing particle counts, this is the lowest
 /// possible value, this prevent random particle counts from
 /// being under this value.
@@ -42,19 +44,37 @@ const RANDOM_MIN_PARTICLE_COUNT: usize = 200;
 /// When randomizing particle counts, this is the highest
 /// possible value, this prevent random particle counts from
 /// being above this value.
-const RANDOM_MAX_PARTICLE_COUNT: usize = 1000;
+const RANDOM_MAX_PARTICLE_COUNT: usize = MAX_PARTICLE_COUNT;
 
 const MAX_FORCE: f32 = 100.;
 const MIN_FORCE: f32 = -MAX_FORCE;
 
 fn main() {
-    let batch = Batch::new(Vec::from_iter((0..32).map(|_| {
-        Network::new([
-            Layer::random(NETWORK_INPUT_SIZE, 32, ActivationFn::LeakyRelu),
-            Layer::random(32, 32, ActivationFn::Tanh),
-            Layer::random(32, NETWORK_OUTPUT_SIZE, ActivationFn::Tanh),
-        ])
-    })));
+    let batch = if Path::new("./batches/batch_gen_0").exists() {
+        let mut batch_gen = 0;
+        let mut batch_path = Path::new("./batches/batch_gen_0").to_path_buf();
+        let mut gap = 20;
+        while gap > 0 {
+            let path: PathBuf = format!("./batches/batch_gen_{}", batch_gen).into();
+            if path.exists() {
+                gap = 20;
+                batch_path = path;
+            } else {
+                gap -= 1;
+            }
+            batch_gen += 1;
+        }
+        from_bytes::<Batch>(&fs::read(batch_path).unwrap()).unwrap()
+    } else {
+        let batch = Batch::new(Vec::from_iter((0..BATCH_SIZE).map(|_| {
+            Network::new([
+                Layer::random(NETWORK_INPUT_SIZE, 12, ActivationFn::LeakyRelu),
+                Layer::random(12, NETWORK_OUTPUT_SIZE, ActivationFn::Tanh),
+            ])
+        })));
+        batch.save();
+        batch
+    };
 
     let options = NativeOptions {
         // initial_window_size: Some(Vec2::new(1600., 900.)),
@@ -75,6 +95,8 @@ fn main() {
         options,
         Box::new(|cc| {
             let frame = cc.egui_ctx.clone();
+
+            let generation = batch.generation;
 
             let senders_clone = senders.clone();
             let training_handle = thread::spawn(move || {
@@ -110,12 +132,13 @@ fn main() {
                     .enumerate()
                     .map(|(i, class_name)| {
                         let [r, g, b] =
-                            Hsva::new((i as f32) / (CLASS_COUNT as f32), 0.95, 0.8, 1.).to_srgb();
+                            Hsva::new((i as f32) / (CLASS_COUNT as f32), 0.925, 0.8, 1.).to_srgb();
                         (class_name, Color32::from_rgb(r, g, b))
                     })
                     .collect::<Vec<(&str, Color32)>>()
                     .try_into()
                     .unwrap(),
+                generation,
                 senders,
                 ui_receiver,
                 Some(simulation_handle),
@@ -162,14 +185,16 @@ enum SmarticlesEvent {
 
     SpawnParticles,
 
-    /// Elapsed time (if available), particle positions,
+    /// Particle positions and elapsed time (if available).
     SimulationResults(Mat2D<Vec2>, Option<Duration>),
 
     ForceMatrixChange(Mat2D<f32>),
     ParticleCountsUpdate([usize; CLASS_COUNT]),
 
     StartTraining(usize),
-    Networks(Vec<Network>),
+    GenerationChange(usize),
+    NetworkRanking(Vec<(f32, Network)>),
+    EvaluateNetworks,
 
     SimulationStart,
     SimulationPause,

@@ -103,4 +103,5 @@
   - `couchy_catydid_leucopus`
   - `berme_abdest_boccale`
 - Added after `0.1.4`
-  - `veinwork_lardlike_seducee`
+  - `heuchs_scarman_endorsor`
+  - `spinouts_amlet_hatsful`

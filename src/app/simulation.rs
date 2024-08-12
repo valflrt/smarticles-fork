@@ -20,7 +20,7 @@ use crate::{
 /// Min update interval in ms (when the simulation is running).
 const UPDATE_INTERVAL: Duration = Duration::from_millis(30);
 /// Min update rate when the simulation is paused.
-const PAUSED_UPDATE_INTERVAL: Duration = Duration::from_millis(100);
+const PAUSED_UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SimulationState {
@@ -130,7 +130,7 @@ impl SimulationBackend {
             if self.network_state == NetworkState::Running {
                 if let Some(network) = &self.network {
                     if self.steps == INFERENCE_TICK_INTERVAL {
-                        let (gcs, ggc, mean_distances, _) =
+                        let (gcs, ggc) =
                             calc_geometric_centers_and_mean_distances(&self.simulation);
 
                         let ggc_to_target_direction = self.target_position - ggc;
@@ -138,13 +138,11 @@ impl SimulationBackend {
                         let mut output = network.infer(adapt_input(
                             ggc_to_target_direction.normalized(),
                             gcs,
-                            mean_distances,
                             self.simulation.force_matrix.to_owned(),
                         ));
 
-                        output.vec_mut().iter_mut().for_each(|x| *x *= MAX_FORCE);
-
-                        *self.simulation.force_matrix.vec_mut() = output.vec();
+                        output.iter_mut().for_each(|x| *x *= MAX_FORCE);
+                        *self.simulation.force_matrix.vec_mut() = output;
 
                         self.senders.send_ui(SmarticlesEvent::ForceMatrixChange(
                             self.simulation.force_matrix.to_owned(),
