@@ -131,6 +131,7 @@ enum SmarticlesEvent {
 
     /// Particle positions and elapsed time (if available).
     SimulationResults(Mat2D<Vec2>, Option<Duration>),
+    _SimulationInfo(),
 
     ForceMatrixChange(Mat2D<f32>),
     ParticleCountsUpdate([usize; CLASS_COUNT]),
