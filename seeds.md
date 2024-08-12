@@ -1,6 +1,6 @@
 # Interesting seeds
 
-> Note that first seeds were tested with old settings so they might not behave as described
+**NOTE: FIRST SEEDS WERE TESTED WITH OLD SETTINGS SO THEY HAVE GREAT CHANCE OF NOT BEHAVING AS DESCRIBED**
 
 - Added before `0.1.1`
   - `helide_burdener`: complex cells.
@@ -102,3 +102,6 @@
   - `pimps_copula_unharsh`
   - `couchy_catydid_leucopus`
   - `berme_abdest_boccale`
+- Added after `0.1.4`
+  - `heuchs_scarman_endorsor`
+  - `spinouts_amlet_hatsful`

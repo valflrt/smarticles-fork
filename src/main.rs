@@ -1,18 +1,20 @@
-use std::sync::mpsc::channel;
-use std::thread;
-use std::time::Duration;
+use std::{
+    sync::mpsc::{channel, Sender},
+    thread,
+    time::Duration,
+};
 
-use array2d::Array2D;
+use app::simulation::SimulationBackend;
+use app::ui::Ui;
 use eframe::epaint::Color32;
 use eframe::NativeOptions;
+use egui::color::Hsva;
 use egui::Vec2;
-use simulation::SimulationState;
-use ui::Smarticles;
+use mat::Mat2D;
 
-use crate::simulation::Simulation;
-
+mod app;
+mod mat;
 mod simulation;
-mod ui;
 
 // IDEA Add recordings ? By exporting positions of all the
 // particles each frame ? That would make around 8000 postions
@@ -25,15 +27,12 @@ mod ui;
 // if the simulation runs for too long there might be differences
 // between computers.
 
-/// Min number of particle classes in the simulation.
-const MIN_CLASSES: usize = 3;
-/// Max number of particle classes in the simulation.
-const MAX_CLASSES: usize = 8;
+const CLASS_COUNT: usize = 6;
 
 /// Min particle count.
 const MIN_PARTICLE_COUNT: usize = 0;
 /// Maximal particle count per class.
-const MAX_PARTICLE_COUNT: usize = 1200;
+const MAX_PARTICLE_COUNT: usize = 8000;
 /// When randomizing particle counts, this is the lowest
 /// possible value, this prevent random particle counts from
 /// being under this value.
@@ -41,16 +40,10 @@ const RANDOM_MIN_PARTICLE_COUNT: usize = 200;
 /// When randomizing particle counts, this is the highest
 /// possible value, this prevent random particle counts from
 /// being above this value.
-const RANDOM_MAX_PARTICLE_COUNT: usize = 1000;
+const RANDOM_MAX_PARTICLE_COUNT: usize = MAX_PARTICLE_COUNT;
 
-const DEFAULT_FORCE: f32 = 0.;
 const MAX_FORCE: f32 = 100.;
 const MIN_FORCE: f32 = -MAX_FORCE;
-const FORCE_FACTOR: f32 = 0.001;
-
-const DEFAULT_RADIUS: f32 = 80.;
-const MIN_RADIUS: f32 = 30.;
-const MAX_RADIUS: f32 = 100.;
 
 fn main() {
     let options = NativeOptions {
@@ -61,8 +54,10 @@ fn main() {
 
     env_logger::init();
 
-    let (ui_send, ui_rcv) = channel::<UiEvent>();
-    let (sim_send, sim_rcv) = channel::<SimResults>();
+    let (ui_sender, ui_receiver) = channel::<SmarticlesEvent>();
+    let (sim_sender, sim_receiver) = channel::<SmarticlesEvent>();
+
+    let senders = Senders::new(ui_sender, sim_sender);
 
     eframe::run_native(
         "Smarticles",
@@ -70,109 +65,77 @@ fn main() {
         Box::new(|cc| {
             let frame = cc.egui_ctx.clone();
 
+            let senders_clone = senders.clone();
             let simulation_handle = thread::spawn(move || {
-                let mut simulation = Simulation::new(sim_send, ui_rcv);
+                let mut sim_backend = SimulationBackend::new(senders_clone, sim_receiver);
+
                 thread::sleep(Duration::from_millis(500));
 
                 loop {
-                    if !simulation.update() {
+                    if !sim_backend.update() {
                         break;
                     };
                     frame.request_repaint();
                 }
             });
 
-            Box::new(Smarticles::new(
-                [
-                    ("α", Color32::from_rgb(247, 0, 243)),
-                    ("β", Color32::from_rgb(166, 0, 255)),
-                    ("γ", Color32::from_rgb(60, 80, 255)),
-                    ("δ", Color32::from_rgb(0, 247, 255)),
-                    ("ε", Color32::from_rgb(68, 255, 0)),
-                    ("ζ", Color32::from_rgb(225, 255, 0)),
-                    ("η", Color32::from_rgb(255, 140, 0)),
-                    ("θ", Color32::from_rgb(255, 0, 0)),
-                ],
-                ui_send,
-                sim_rcv,
+            Box::new(Ui::new(
+                ["α", "β", "γ", "δ", "ε", "ζ", "η", "θ"]
+                    .iter()
+                    .take(CLASS_COUNT)
+                    .copied()
+                    .enumerate()
+                    .map(|(i, class_name)| {
+                        let [r, g, b] =
+                            Hsva::new((i as f32) / (CLASS_COUNT as f32), 0.9, 0.9, 1.).to_srgb();
+                        (class_name, Color32::from_rgb(r, g, b))
+                    })
+                    .collect::<Vec<(&str, Color32)>>()
+                    .try_into()
+                    .unwrap(),
+                senders,
+                ui_receiver,
                 Some(simulation_handle),
             ))
         }),
     );
-
-    // ("α", Color32::from_rgb(251, 70, 76)),
-    // ("β", Color32::from_rgb(233, 151, 63)),
-    // ("γ", Color32::from_rgb(224, 222, 113)),
-    // ("δ", Color32::from_rgb(68, 207, 110)),
-    // ("ε", Color32::from_rgb(83, 223, 221)),
-    // ("ζ", Color32::from_rgb(2, 122, 255)),
-    // ("η", Color32::from_rgb(168, 130, 255)),
-    // ("θ", Color32::from_rgb(250, 153, 205)),
-
-    // ("α", Color32::from_rgb(251, 123, 119)),
-    // ("β", Color32::from_rgb(253, 193, 112)),
-    // ("γ", Color32::from_rgb(243, 248, 127)),
-    // ("δ", Color32::from_rgb(152, 247, 134)),
-    // ("ε", Color32::from_rgb(105, 235, 252)),
-    // ("ζ", Color32::from_rgb(109, 158, 252)),
-    // ("η", Color32::from_rgb(147, 125, 248)),
-    // ("θ", Color32::from_rgb(247, 142, 240)),
 }
-
-#[derive(Debug)]
-enum UiEvent {
-    Play,
-    Pause,
-    Reset,
-    Spawn,
-    Quit,
-
-    ParamsUpdate(Array2D<Param>),
-    ClassCountUpdate(usize),
-    ParticleCountsUpdate([usize; MAX_CLASSES]),
-}
-
-#[derive(Debug)]
-struct SimResults(Option<Duration>, Array2D<Vec2>);
 
 #[derive(Debug, Clone)]
-struct Param {
-    force: f32,
-    radius: f32,
-}
-impl Param {
-    pub fn new(force: f32, radius: f32) -> Self {
-        Self { force, radius }
-    }
+struct Senders {
+    ui_sender: Sender<SmarticlesEvent>,
+    sim_sender: Sender<SmarticlesEvent>,
 }
 
-struct SharedState {
-    simulation_state: SimulationState,
-    class_count: usize,
-    particle_counts: [usize; MAX_CLASSES],
-    /// Matrix containing force and radius for each particle class
-    /// with respect to each other.
-    param_matrix: Array2D<Param>,
-}
-
-impl SharedState {
-    fn new() -> Self {
-        Self {
-            simulation_state: SimulationState::Stopped,
-            class_count: MAX_CLASSES,
-            particle_counts: [0; MAX_CLASSES],
-            param_matrix: Array2D::filled_with(
-                Param::new(DEFAULT_FORCE, DEFAULT_RADIUS),
-                MAX_CLASSES,
-                MAX_CLASSES,
-            ),
+impl Senders {
+    pub fn new(ui_sender: Sender<SmarticlesEvent>, sim_sender: Sender<SmarticlesEvent>) -> Self {
+        Senders {
+            ui_sender,
+            sim_sender,
         }
     }
+
+    pub fn send_ui(&self, event: SmarticlesEvent) {
+        self.ui_sender.send(event).unwrap()
+    }
+    pub fn send_sim(&self, event: SmarticlesEvent) {
+        self.sim_sender.send(event).unwrap()
+    }
 }
 
-trait UpdateSharedState {
-    fn play(&mut self);
-    fn pause(&mut self);
-    fn reset(&mut self);
-    fn spawn(&mut self);
+#[derive(Debug, Clone)]
+enum SmarticlesEvent {
+    Quit,
+
+    SpawnParticles,
+
+    /// Particle positions and elapsed time (if available).
+    SimulationResults(Mat2D<Vec2>, Option<Duration>),
+
+    ForceMatrixChange(Mat2D<f32>),
+    ParticleCountsUpdate([usize; CLASS_COUNT]),
+
+    SimulationStart,
+    SimulationPause,
+    SimulationReset,
 }
