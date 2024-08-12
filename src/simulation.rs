@@ -91,9 +91,6 @@ impl Simulation {
     }
 
     fn calculate_particle_update(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
-        // for c1 in 0..CLASS_COUNT {
-        // for c2 in 0..CLASS_COUNT {
-
         (0..CLASS_COUNT)
             .into_par_iter()
             .flat_map(|c1| {
@@ -127,9 +124,6 @@ impl Simulation {
                     })
             })
             .collect::<Vec<((usize, usize), (Vec2, Vec2))>>()
-
-        // }
-        // }
     }
 
     pub fn move_particles(&mut self) {
