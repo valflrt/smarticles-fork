@@ -107,3 +107,4 @@
   - `spinouts_amlet_hatsful`
   - `spitter_relate_longwool`
   - `mulct_chukor_caama`
+  - `justs_klosh_kendoist`

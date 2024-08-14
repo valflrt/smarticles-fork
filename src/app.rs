@@ -5,7 +5,7 @@ use std::{
     thread::JoinHandle,
 };
 
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{ReadBytesExt, WriteBytesExt};
 use eframe::{
     egui::{
         Align2, CentralPanel, ComboBox, Context, FontId, PointerButton, ScrollArea, Sense,
@@ -83,8 +83,9 @@ pub struct SmarticlesApp {
     simulation_handle: Option<JoinHandle<()>>,
 
     particle_counts: [usize; CLASS_COUNT],
+    locked_particle_counts: bool,
     particle_positions: Mat2D<Vec2>,
-    force_matrix: Mat2D<f32>,
+    force_matrix: Mat2D<i8>,
     simulation_state: SimulationState,
 }
 
@@ -142,8 +143,9 @@ impl SmarticlesApp {
             simulation_handle,
 
             particle_counts: [200; CLASS_COUNT],
+            locked_particle_counts: false,
             particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
-            force_matrix: Mat2D::filled_with(0., CLASS_COUNT, CLASS_COUNT),
+            force_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
             simulation_state: SimulationState::Paused,
         }
     }
@@ -154,7 +156,7 @@ impl SmarticlesApp {
         } else {
             if self.seed.starts_with('@') {
                 if let Ok(bytes) = base64::decode(&self.seed[1..]) {
-                    self.import(&bytes);
+                    self.apply_custom_seed(&bytes);
                     return;
                 }
             }
@@ -167,18 +169,37 @@ impl SmarticlesApp {
         const POW_F: f32 = 1.25;
 
         for i in 0..CLASS_COUNT {
-            self.particle_counts[i] = rand(
-                RANDOM_MIN_PARTICLE_COUNT as f32,
-                RANDOM_MAX_PARTICLE_COUNT as f32,
-            ) as usize;
+            if !self.locked_particle_counts {
+                self.particle_counts[i] = rand(
+                    RANDOM_MIN_PARTICLE_COUNT as f32,
+                    RANDOM_MAX_PARTICLE_COUNT as f32,
+                ) as usize;
+            }
             for j in 0..CLASS_COUNT {
-                let pow = rand(MIN_FORCE, MAX_FORCE);
-                self.force_matrix[(i, j)] = pow.signum() * pow.abs().powf(1. / POW_F);
+                let pow = rand(MIN_FORCE as f32, MAX_FORCE as f32);
+                self.force_matrix[(i, j)] = (pow.signum() * pow.abs().powf(1. / POW_F)) as i8;
             }
         }
 
         self.send_params();
         self.send_particle_counts();
+    }
+    fn export_custom_seed(&self) -> String {
+        let mut bytes: Vec<u8> = Vec::new();
+        self.force_matrix
+            .vec()
+            .iter()
+            .copied()
+            .for_each(|force_factor| bytes.write_i8(force_factor).unwrap());
+
+        format!("@{}", base64::encode(bytes))
+    }
+    fn apply_custom_seed(&mut self, mut bytes: &[u8]) {
+        for i in 0..CLASS_COUNT {
+            for j in 0..CLASS_COUNT {
+                self.force_matrix[(i, j)] = bytes.read_i8().unwrap_or(0);
+            }
+        }
     }
 
     fn send_params(&self) {
@@ -192,34 +213,17 @@ impl SmarticlesApp {
         ));
     }
 
-    fn export(&self) -> String {
-        let mut bytes: Vec<u8> = Vec::new();
-        for count in &self.particle_counts {
-            bytes.write_u16::<LE>(*count as u16).unwrap();
-        }
-        self.force_matrix.vec().iter().copied().for_each(|force| {
-            bytes.write_i8(force as i8).unwrap();
-        });
-
-        format!("@{}", base64::encode(bytes))
-    }
-
-    fn import(&mut self, mut bytes: &[u8]) {
-        for count in &mut self.particle_counts {
-            *count = bytes.read_u16::<LE>().unwrap_or(0) as usize;
-        }
-
-        for i in 0..CLASS_COUNT {
-            for j in 0..CLASS_COUNT {
-                self.force_matrix[(i, j)] = bytes.read_i8().unwrap_or(0) as f32;
-            }
-        }
-    }
-
     fn update_history(&mut self) {
-        self.history.push_front(self.seed.to_owned());
-        if self.history.len() > MAX_HISTORY_LEN {
-            self.history.pop_back();
+        if self
+            .history
+            .front()
+            .and_then(|front| Some(&self.seed != front))
+            .unwrap_or(true)
+        {
+            self.history.push_front(self.seed.to_owned());
+            if self.history.len() > MAX_HISTORY_LEN {
+                self.history.pop_back();
+            }
         }
         self.selected_history_entry = 0;
     }
@@ -255,10 +259,6 @@ impl App for SmarticlesApp {
 
                 SmarticlesEvent::ForceMatrixChange(force_matrix) => {
                     self.force_matrix = force_matrix;
-                }
-
-                SmarticlesEvent::ParticleCountsUpdate(particle_counts) => {
-                    self.particle_counts = particle_counts;
                 }
 
                 _ => {}
@@ -350,6 +350,8 @@ impl App for SmarticlesApp {
 
                 let total_particle_count: usize = self.particle_counts.iter().sum();
                 ui.code(total_particle_count.to_string());
+
+                ui.checkbox(&mut self.locked_particle_counts, "lock particle counts");
             });
 
             ui.horizontal(|ui| {
@@ -428,9 +430,7 @@ impl App for SmarticlesApp {
                             ))
                             .changed()
                         {
-                            self.seed = self.export();
                             self.spawn();
-
                             self.send_particle_counts();
                         }
                     });
@@ -454,7 +454,7 @@ impl App for SmarticlesApp {
                                             .changed()
                                         {
                                             self.selected_param = (i, j);
-                                            self.seed = self.export();
+                                            self.seed = self.export_custom_seed();
 
                                             self.send_params();
                                         }

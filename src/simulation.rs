@@ -42,6 +42,7 @@ impl Cell {
         )
     }
 
+    #[inline]
     pub const fn get_neighbors(&self) -> [Cell; 9] {
         let Cell(x, y) = *self;
         [
@@ -63,7 +64,7 @@ pub struct Simulation {
     pub particle_counts: [usize; CLASS_COUNT],
     /// Matrix containing force and radius for each particle class
     /// with respect to each other.
-    pub force_matrix: Mat2D<f32>,
+    pub force_matrix: Mat2D<i8>,
 
     pub particle_prev_positions: Mat2D<Vec2>,
     pub particle_positions: Mat2D<Vec2>,
@@ -75,14 +76,9 @@ impl Simulation {
     fn get_neighboring_particles(&self, cell: Cell) -> Vec<(usize, usize)> {
         cell.get_neighbors()
             .iter()
-            .flat_map(|neighbor| {
-                if let Some(particles) = self.cell_map.get(neighbor) {
-                    particles.iter().copied()
-                } else {
-                    [].iter().copied()
-                }
-            })
-            .collect::<Vec<_>>()
+            .filter_map(|neighbor| self.cell_map.get(neighbor))
+            .flat_map(|particles| particles.iter().copied())
+            .collect()
     }
 
     fn compute_position_updates(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
@@ -105,7 +101,7 @@ impl Simulation {
 
                             let direction = other_pos - pos;
                             force -= direction.normalized()
-                                * compute_force(direction.length(), force_factor)
+                                * compute_force(direction.length(), force_factor as f32)
                                 * FORCE_SCALING_FACTOR;
                         }
 
@@ -190,7 +186,7 @@ impl Default for Simulation {
         let particle_positions = Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT);
         let mut sim = Self {
             particle_counts: [200; CLASS_COUNT],
-            force_matrix: Mat2D::filled_with(0., CLASS_COUNT, CLASS_COUNT),
+            force_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
 
             particle_prev_positions: particle_positions.to_owned(),
             particle_positions,
