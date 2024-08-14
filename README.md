@@ -22,7 +22,7 @@ https://github.com/user-attachments/assets/42a7374d-1c5f-4fdf-b43e-8d810fbe6f5f
 
 ## Running the App
 
-To run this app, you can either download the binary from the [release page]() or build it yourself from source by following the instructions below.
+To run this app, you can either download the [latest binary](https://github.com/valflrt/smarticles-fork/releases/latest) or build it yourself from source by following the instructions below.
 
 To build the app, you will need Rust installed, which you can do by following the installation instructions on the [Rust website](https://www.rust-lang.org/). You should then have `cargo` installed, which is the command line program for managing and running Rust projects. Make sure you have the latest version.
 
@@ -35,9 +35,7 @@ cargo run -r
 
 ## How to use the app
 
-Press the `randomize` button to spawn particles from a ne
-
-w randomized seed. Then, press the `play` button to run the simulation.
+Press the `randomize` button to spawn particles from a new randomized seed. Then, press the `play` button to run the simulation.
 
 Here are the app's general controls:
 
