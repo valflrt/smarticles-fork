@@ -142,7 +142,7 @@ impl SmarticlesApp {
 
             simulation_handle,
 
-            particle_counts: [200; CLASS_COUNT],
+            particle_counts: [0; CLASS_COUNT],
             locked_particle_counts: false,
             particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
             power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
@@ -238,6 +238,7 @@ impl SmarticlesApp {
     }
     fn reset(&mut self) {
         self.simulation_state = SimulationState::Paused;
+        self.particle_counts = [0; CLASS_COUNT];
         self.senders.send_sim(SmarticlesEvent::SimulationReset);
     }
     fn spawn(&mut self) {
@@ -310,8 +311,8 @@ impl App for SmarticlesApp {
                 }
 
                 if ui
-                    .button("reset View")
-                    .on_hover_text("reset zoom and position")
+                    .button("reset view")
+                    .on_hover_text("reset zoom and view position")
                     .clicked()
                 {
                     self.view = View::DEFAULT;
@@ -430,8 +431,8 @@ impl App for SmarticlesApp {
                             ))
                             .changed()
                         {
-                            self.spawn();
                             self.send_particle_counts();
+                            self.spawn();
                         }
                     });
 
@@ -440,12 +441,12 @@ impl App for SmarticlesApp {
                             ui.vertical(|ui| {
                                 for j in 0..CLASS_COUNT {
                                     ui.horizontal(|ui| {
-                                        ui.label("power (");
+                                        ui.label("power of the force applied on");
                                         ui.colored_label(
                                             self.classes[j].color,
                                             &self.classes[j].name,
                                         );
-                                        ui.label(")");
+                                        ui.label(":");
                                         if ui
                                             .add(Slider::new(
                                                 &mut self.power_matrix[(i, j)],

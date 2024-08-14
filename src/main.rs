@@ -85,8 +85,14 @@ fn main() {
                     .copied()
                     .enumerate()
                     .map(|(i, class_name)| {
-                        let [r, g, b] =
-                            Hsva::new((i as f32) / (CLASS_COUNT as f32), 0.9, 0.9, 1.).to_srgb();
+                        let [r, g, b] = Hsva::new(
+                            // tinkering to make purple appear first. I like purple.
+                            (((CLASS_COUNT - i - 1) % CLASS_COUNT) as f32) / (CLASS_COUNT as f32),
+                            0.9,
+                            0.9,
+                            1.,
+                        )
+                        .to_srgb();
                         (class_name, Color32::from_rgb(r, g, b))
                     })
                     .collect::<Vec<(&str, Color32)>>()

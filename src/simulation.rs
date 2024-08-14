@@ -8,12 +8,12 @@ use rayon::prelude::*;
 use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 
 pub const FIRST_THRESHOLD: f32 = 10.;
-pub const SECOND_THRESHOLD: f32 = 10.;
+pub const SECOND_THRESHOLD: f32 = 12.;
 
 pub const PROXIMITY_POWER: f32 = -60.;
 
-const DAMPING_FACTOR: f32 = 0.1;
-const FORCE_SCALING_FACTOR: f32 = 0.0005;
+const DAMPING_FACTOR: f32 = 0.06;
+const FORCE_SCALING_FACTOR: f32 = 0.0008;
 
 const SPAWN_DENSITY: f32 = 12.;
 

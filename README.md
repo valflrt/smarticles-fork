@@ -8,7 +8,7 @@ This is a Rust port of [Brainxyz's Artificial Life](https://www.youtube.com/watc
 
 It was originally created by [ChevyRay](https://github.com/ChevyRay) and improved by valflrt.
 
-https://github.com/valflrt/smarticles-fork/assets/49407769/0dd69167-b88a-4c95-a827-3c25fd6ffef7
+<!--add app_anim.mov-->
 
 ## Roadmap
 
@@ -18,7 +18,7 @@ https://github.com/valflrt/smarticles-fork/assets/49407769/0dd69167-b88a-4c95-a8
 - [x] add particle inspector that allows following a selected particle
 - [x] add seed history to go back to previous seeds
 - [x] add multithreading: the simulation and display threads run in parallel
-- [x] Add spacial partitioning to considerably improve performance
+- [x] Add spacial partitioning to considerably improve performance: you can now simulate thousands of particles with a decent tick rate which rarely exceeds 50ms (only in special cases where particles are gathered in groups and very close to each other)
 
 ## Running the App
 
@@ -43,8 +43,6 @@ Here are the app's general controls:
 
 Try randomizing it a few times and seeing what kind of results you get.
 
-https://github.com/valflrt/smarticles-fork/assets/49407769/35ceec60-ccdd-4171-89b0-8dd39fc0314b
-
 There are 8 particle types. You can change the behavior of each with respect to any other with the sliders:
 
 ![screenshot of particle's parameters](./img/params.png)
@@ -53,19 +51,13 @@ Those enable you to change the `power` is the particle's attraction to particles
 
 You can adjust these parameters while the simulation is running if you want to see the effect they have:
 
-https://github.com/valflrt/smarticles-fork/assets/49407769/d833d28d-8354-42ad-a952-4e75c5eb344d
+<!--add live_param.mov-->
 
 ## Sharing Simulations
 
 The `seed` field enables you to share or save your favorite seeds. It contains all the information needed to replicate the current simulation.
 
 Pressing `randomize` will give you random seeds, but you can also enter a custom one.
-
-What does _your_ name look like?
-
-https://github.com/valflrt/smarticles-fork/assets/49407769/8cd0314d-71b2-4076-8f9e-2b4fe3d58178
-
-> ☝️ literally the inside of ChevyRay's and valflrt's brains ☝️
 
 If you start adjusting parameters, you'll notice the seed changes to a code that begins with the `@` symbol. These are custom-encoded simulations, which you can share by copying the entire code.
 
@@ -79,9 +71,7 @@ You can inspect particles using the particle inspector.
 
 ![screenshot of particle inspector menu](./img/particle_inspector_menu.png)
 
-One of the useful features it offers is following the selected particle:
-
-https://github.com/valflrt/smarticles-fork/assets/49407769/33cee6ec-5745-4567-a195-71ddcb44e848
+One of the useful features it offers is following the selected particle.
 
 ## Seed History
 
