@@ -6,9 +6,9 @@ This is a Rust port of [Brainxyz's Artificial Life](https://www.youtube.com/watc
 >
 > – from the [original repository](https://github.com/hunar4321/life_code)
 
-It was originally created by [ChevyRay](https://github.com/ChevyRay) and improved by valflrt.
+It was originally created by [ChevyRay](https://github.com/ChevyRay) and improved by valflrt. Here is a preview of what the app does:
 
-<!--add app_anim.mov-->
+https://github.com/user-attachments/assets/42a7374d-1c5f-4fdf-b43e-8d810fbe6f5f
 
 ## Roadmap
 
@@ -35,7 +35,9 @@ cargo run -r
 
 ## How to use the app
 
-Press the `randomize` button to spawn particles from a new randomized seed. Then, press the `play` button to run the simulation.
+Press the `randomize` button to spawn particles from a ne
+
+w randomized seed. Then, press the `play` button to run the simulation.
 
 Here are the app's general controls:
 
@@ -51,7 +53,7 @@ Those enable you to change the `power` is the particle's attraction to particles
 
 You can adjust these parameters while the simulation is running if you want to see the effect they have:
 
-<!--add live_param.mov-->
+https://github.com/user-attachments/assets/88862e6c-dbe4-48d0-9b0a-50b5b5847710
 
 ## Sharing Simulations
 
