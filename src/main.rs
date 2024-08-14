@@ -44,8 +44,8 @@ const RANDOM_MIN_PARTICLE_COUNT: usize = 200;
 /// being above this value.
 const RANDOM_MAX_PARTICLE_COUNT: usize = MAX_PARTICLE_COUNT;
 
-const MAX_FORCE: i8 = 100;
-const MIN_FORCE: i8 = -MAX_FORCE;
+const MAX_POWER: i8 = 100;
+const MIN_POWER: i8 = -MAX_POWER;
 
 fn main() {
     let options = NativeOptions {
@@ -133,7 +133,7 @@ enum SmarticlesEvent {
     SimulationResults(Mat2D<Vec2>, Option<Duration>),
     _SimulationInfo(),
 
-    ForceMatrixChange(Mat2D<i8>),
+    PowerMatrixChange(Mat2D<i8>),
     ParticleCountsUpdate([usize; CLASS_COUNT]),
 
     SimulationStart,

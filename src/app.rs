@@ -19,7 +19,7 @@ use rayon::prelude::*;
 
 use crate::{
     mat::Mat2D, simulation_manager::SimulationState, Senders, SmarticlesEvent, CLASS_COUNT,
-    MAX_FORCE, MAX_PARTICLE_COUNT, MIN_FORCE, MIN_PARTICLE_COUNT, RANDOM_MAX_PARTICLE_COUNT,
+    MAX_PARTICLE_COUNT, MAX_POWER, MIN_PARTICLE_COUNT, MIN_POWER, RANDOM_MAX_PARTICLE_COUNT,
     RANDOM_MIN_PARTICLE_COUNT,
 };
 
@@ -85,7 +85,7 @@ pub struct SmarticlesApp {
     particle_counts: [usize; CLASS_COUNT],
     locked_particle_counts: bool,
     particle_positions: Mat2D<Vec2>,
-    force_matrix: Mat2D<i8>,
+    power_matrix: Mat2D<i8>,
     simulation_state: SimulationState,
 }
 
@@ -145,7 +145,7 @@ impl SmarticlesApp {
             particle_counts: [200; CLASS_COUNT],
             locked_particle_counts: false,
             particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
-            force_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
+            power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
             simulation_state: SimulationState::Paused,
         }
     }
@@ -176,8 +176,8 @@ impl SmarticlesApp {
                 ) as usize;
             }
             for j in 0..CLASS_COUNT {
-                let pow = rand(MIN_FORCE as f32, MAX_FORCE as f32);
-                self.force_matrix[(i, j)] = (pow.signum() * pow.abs().powf(1. / POW_F)) as i8;
+                let pow = rand(MIN_POWER as f32, MAX_POWER as f32);
+                self.power_matrix[(i, j)] = (pow.signum() * pow.abs().powf(1. / POW_F)) as i8;
             }
         }
 
@@ -186,25 +186,25 @@ impl SmarticlesApp {
     }
     fn export_custom_seed(&self) -> String {
         let mut bytes: Vec<u8> = Vec::new();
-        self.force_matrix
+        self.power_matrix
             .vec()
             .iter()
             .copied()
-            .for_each(|force_factor| bytes.write_i8(force_factor).unwrap());
+            .for_each(|power| bytes.write_i8(power).unwrap());
 
         format!("@{}", base64::encode(bytes))
     }
     fn apply_custom_seed(&mut self, mut bytes: &[u8]) {
         for i in 0..CLASS_COUNT {
             for j in 0..CLASS_COUNT {
-                self.force_matrix[(i, j)] = bytes.read_i8().unwrap_or(0);
+                self.power_matrix[(i, j)] = bytes.read_i8().unwrap_or(0);
             }
         }
     }
 
     fn send_params(&self) {
-        self.senders.send_sim(SmarticlesEvent::ForceMatrixChange(
-            self.force_matrix.to_owned(),
+        self.senders.send_sim(SmarticlesEvent::PowerMatrixChange(
+            self.power_matrix.to_owned(),
         ));
     }
     fn send_particle_counts(&self) {
@@ -257,8 +257,8 @@ impl App for SmarticlesApp {
                     self.particle_positions = positions;
                 }
 
-                SmarticlesEvent::ForceMatrixChange(force_matrix) => {
-                    self.force_matrix = force_matrix;
+                SmarticlesEvent::PowerMatrixChange(power_matrix) => {
+                    self.power_matrix = power_matrix;
                 }
 
                 _ => {}
@@ -440,7 +440,7 @@ impl App for SmarticlesApp {
                             ui.vertical(|ui| {
                                 for j in 0..CLASS_COUNT {
                                     ui.horizontal(|ui| {
-                                        ui.label("force (");
+                                        ui.label("power (");
                                         ui.colored_label(
                                             self.classes[j].color,
                                             &self.classes[j].name,
@@ -448,8 +448,8 @@ impl App for SmarticlesApp {
                                         ui.label(")");
                                         if ui
                                             .add(Slider::new(
-                                                &mut self.force_matrix[(i, j)],
-                                                MIN_FORCE..=MAX_FORCE,
+                                                &mut self.power_matrix[(i, j)],
+                                                MIN_POWER..=MAX_POWER,
                                             ))
                                             .changed()
                                         {

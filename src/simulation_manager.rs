@@ -57,8 +57,8 @@ impl SimulationManager {
                 }
                 SmarticlesEvent::SimulationPause => self.simulation_state = SimulationState::Paused,
 
-                SmarticlesEvent::ForceMatrixChange(force_matrix) => {
-                    self.simulation.force_matrix = force_matrix
+                SmarticlesEvent::PowerMatrixChange(power_matrix) => {
+                    self.simulation.power_matrix = power_matrix
                 }
                 SmarticlesEvent::ParticleCountsUpdate(particle_counts) => {
                     self.simulation.particle_counts = particle_counts

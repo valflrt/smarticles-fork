@@ -1,11 +1,12 @@
 # Smarticles
 
-A Rust port of [Brainxyz's Artificial Life](https://www.youtube.com/watch?v=0Kx4Y9TVMGg)
-simulator with some fun features.
+This is a Rust port of [Brainxyz's Artificial Life](https://www.youtube.com/watch?v=0Kx4Y9TVMGg) simulator with some fun features.
 
 > _A simple program to simulate primitive Artificial Life using simple rules of attraction or repulsion among atom-like particles, producing complex self-organzing life-like patterns._
 >
 > – from the [original repository](https://github.com/hunar4321/life_code)
+
+It was originally created by [ChevyRay](https://github.com/ChevyRay) and improved by valflrt.
 
 https://github.com/valflrt/smarticles-fork/assets/49407769/0dd69167-b88a-4c95-a827-3c25fd6ffef7
 
@@ -17,17 +18,13 @@ https://github.com/valflrt/smarticles-fork/assets/49407769/0dd69167-b88a-4c95-a8
 - [x] add particle inspector that allows following a selected particle
 - [x] add seed history to go back to previous seeds
 - [x] add multithreading: the simulation and display threads run in parallel
+- [x] Add spacial partitioning to considerably improve performance
 
 ## Running the App
 
-To run this, you will need Rust installed, which you can do by following the installation instructions on the [Rust website](https://www.rust-lang.org/). You should then have `cargo` installed, which is the command line program for managing and running Rust projects.
+To run this app, you can either download the binary from the [release page]() or build it yourself from source by following the instructions below.
 
-You can check your version of `cargo` in the command line:
-
-```commandline
-cargo --version
-cargo 1.77.0 (3fe68eabf 2024-02-29)
-```
+To build the app, you will need Rust installed, which you can do by following the installation instructions on the [Rust website](https://www.rust-lang.org/). You should then have `cargo` installed, which is the command line program for managing and running Rust projects. Make sure you have the latest version.
 
 Once done, download or clone this repository to your preferred location and run the program using `cargo` like so:
 
@@ -36,9 +33,9 @@ cd ~/path/to/smarticles
 cargo run -r
 ```
 
-## How to Use It
+## How to use the app
 
-First, watch it in action. Press the `randomize` button, which will spawn a bunch of particles with randomized settings. Then, press `play` to run the simulation.
+Press the `randomize` button to spawn particles from a new randomized seed. Then, press the `play` button to run the simulation.
 
 Here are the app's general controls:
 
@@ -52,8 +49,7 @@ There are 8 particle types. You can change the behavior of each with respect to 
 
 ![screenshot of particle's parameters](./img/params.png)
 
-- `power` is the particle's attraction to particles of the other type. A positive number means it is attracted to them, and negative means it is repulsed away.
-- `radius` is how far away the particle can sense particles of that type.
+Those enable you to change the `power` is the particle's attraction to particles of the other type. A positive number means it is attracted to them, and negative means it is repulsed away.
 
 You can adjust these parameters while the simulation is running if you want to see the effect they have:
 
@@ -61,13 +57,15 @@ https://github.com/valflrt/smarticles-fork/assets/49407769/d833d28d-8354-42ad-a9
 
 ## Sharing Simulations
 
-The `seed` field is the _"D.N.A"_ of your particle system. It contains all the information needed to replicate the current simulation. Pressing `randomize` will give you random seeds, but you can also enter a custom one.
+The `seed` field enables you to share or save your favorite seeds. It contains all the information needed to replicate the current simulation.
+
+Pressing `randomize` will give you random seeds, but you can also enter a custom one.
 
 What does _your_ name look like?
 
 https://github.com/valflrt/smarticles-fork/assets/49407769/8cd0314d-71b2-4076-8f9e-2b4fe3d58178
 
-> ☝️ literally the inside of Chevy and valflrt brains ☝️
+> ☝️ literally the inside of ChevyRay's and valflrt's brains ☝️
 
 If you start adjusting parameters, you'll notice the seed changes to a code that begins with the `@` symbol. These are custom-encoded simulations, which you can share by copying the entire code.
 

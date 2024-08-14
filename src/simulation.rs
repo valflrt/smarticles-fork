@@ -10,20 +10,20 @@ use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 pub const FIRST_THRESHOLD: f32 = 10.;
 pub const SECOND_THRESHOLD: f32 = 10.;
 
-pub const PROXIMITY_FORCE: f32 = -60.;
+pub const PROXIMITY_POWER: f32 = -60.;
 
 const DAMPING_FACTOR: f32 = 0.1;
 const FORCE_SCALING_FACTOR: f32 = 0.0005;
 
 const SPAWN_DENSITY: f32 = 12.;
 
-pub fn compute_force(radius: f32, force: f32) -> f32 {
+pub fn compute_force(radius: f32, power: f32) -> f32 {
     if radius < FIRST_THRESHOLD {
-        (radius / FIRST_THRESHOLD - 1.) * PROXIMITY_FORCE
+        (radius / FIRST_THRESHOLD - 1.) * PROXIMITY_POWER
     } else if radius < FIRST_THRESHOLD + SECOND_THRESHOLD {
-        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD) * force
+        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD) * power
     } else if radius < FIRST_THRESHOLD + 2. * SECOND_THRESHOLD {
-        (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * force
+        (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * power
     } else {
         0.
     }
@@ -62,9 +62,9 @@ impl Cell {
 #[derive(Debug, Clone)]
 pub struct Simulation {
     pub particle_counts: [usize; CLASS_COUNT],
-    /// Matrix containing force and radius for each particle class
-    /// with respect to each other.
-    pub force_matrix: Mat2D<i8>,
+    /// Matrix containing the power for each particle class with
+    /// respect to each other.
+    pub power_matrix: Mat2D<i8>,
 
     pub particle_prev_positions: Mat2D<Vec2>,
     pub particle_positions: Mat2D<Vec2>,
@@ -96,12 +96,12 @@ impl Simulation {
                         let neighboring_particles = self.get_neighboring_particles(cell);
                         // println!("{:?}: {}", cell, neighboring_particles.len());
                         for (c2, p2) in neighboring_particles {
-                            let force_factor = -self.force_matrix[(c1, c2)];
+                            let power = -self.power_matrix[(c1, c2)];
                             let other_pos = self.particle_positions[(c2, p2)];
 
                             let direction = other_pos - pos;
                             force -= direction.normalized()
-                                * compute_force(direction.length(), force_factor as f32)
+                                * compute_force(direction.length(), power as f32)
                                 * FORCE_SCALING_FACTOR;
                         }
 
@@ -186,7 +186,7 @@ impl Default for Simulation {
         let particle_positions = Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT);
         let mut sim = Self {
             particle_counts: [200; CLASS_COUNT],
-            force_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
+            power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
 
             particle_prev_positions: particle_positions.to_owned(),
             particle_positions,
