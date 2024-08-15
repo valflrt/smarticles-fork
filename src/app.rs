@@ -66,7 +66,6 @@ pub struct SmarticlesApp {
 
     view: View,
 
-    selected_param: (usize, usize),
     selected_particle: (usize, usize),
     follow_selected_particle: bool,
 
@@ -75,18 +74,18 @@ pub struct SmarticlesApp {
 
     computation_time: u128,
 
-    words: Vec<String>,
+    particle_counts: [usize; CLASS_COUNT],
+    locked_particle_counts: bool,
+    particle_positions: Mat2D<Vec2>,
+    power_matrix: Mat2D<i8>,
+    simulation_state: SimulationState,
 
     senders: Senders,
     receiver: Receiver<SmarticlesEvent>,
 
     simulation_handle: Option<JoinHandle<()>>,
 
-    particle_counts: [usize; CLASS_COUNT],
-    locked_particle_counts: bool,
-    particle_positions: Mat2D<Vec2>,
-    power_matrix: Mat2D<i8>,
-    simulation_state: SimulationState,
+    words: Vec<String>,
 }
 
 impl SmarticlesApp {
@@ -126,7 +125,6 @@ impl SmarticlesApp {
 
             view: View::DEFAULT,
 
-            selected_param: (0, 0),
             selected_particle: (0, 0),
             follow_selected_particle: false,
 
@@ -135,18 +133,18 @@ impl SmarticlesApp {
 
             computation_time: 0,
 
-            words,
+            particle_counts: [0; CLASS_COUNT],
+            locked_particle_counts: false,
+            particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
+            power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
+            simulation_state: SimulationState::Paused,
 
             senders,
             receiver,
 
             simulation_handle,
 
-            particle_counts: [0; CLASS_COUNT],
-            locked_particle_counts: false,
-            particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
-            power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
-            simulation_state: SimulationState::Paused,
+            words,
         }
     }
 
@@ -238,7 +236,13 @@ impl SmarticlesApp {
     }
     fn reset(&mut self) {
         self.simulation_state = SimulationState::Paused;
+        self.locked_particle_counts = false;
         self.particle_counts = [0; CLASS_COUNT];
+        for i in 0..CLASS_COUNT {
+            for j in 0..CLASS_COUNT {
+                self.power_matrix[(i, j)] = 0;
+            }
+        }
         self.senders.send_sim(SmarticlesEvent::SimulationReset);
     }
     fn spawn(&mut self) {
@@ -442,11 +446,13 @@ impl App for SmarticlesApp {
                                 for j in 0..CLASS_COUNT {
                                     ui.horizontal(|ui| {
                                         ui.label("power of the force applied on");
-                                        ui.colored_label(
+                                        let class_name = ui.colored_label(
                                             self.classes[j].color,
                                             &self.classes[j].name,
                                         );
+                                        ui.add_space(5. - class_name.rect.width() / 2.);
                                         ui.label(":");
+                                        ui.add_space(5. - class_name.rect.width() / 2.);
                                         if ui
                                             .add(Slider::new(
                                                 &mut self.power_matrix[(i, j)],
@@ -454,9 +460,11 @@ impl App for SmarticlesApp {
                                             ))
                                             .changed()
                                         {
-                                            self.selected_param = (i, j);
                                             self.seed = self.export_custom_seed();
-
+                                            self.send_params();
+                                        }
+                                        if ui.button("reset").clicked() {
+                                            self.power_matrix[(i, j)] = 0;
                                             self.send_params();
                                         }
                                     });
