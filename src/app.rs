@@ -441,35 +441,33 @@ impl App for SmarticlesApp {
                     });
 
                     ui.collapsing(self.classes[i].heading.to_owned() + " params", |ui| {
-                        ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                for j in 0..CLASS_COUNT {
-                                    ui.horizontal(|ui| {
-                                        ui.label("power of the force applied on");
-                                        let class_name = ui.colored_label(
-                                            self.classes[j].color,
-                                            &self.classes[j].name,
-                                        );
-                                        ui.add_space(5. - class_name.rect.width() / 2.);
-                                        ui.label(":");
-                                        ui.add_space(5. - class_name.rect.width() / 2.);
-                                        if ui
-                                            .add(Slider::new(
-                                                &mut self.power_matrix[(i, j)],
-                                                MIN_POWER..=MAX_POWER,
-                                            ))
-                                            .changed()
-                                        {
-                                            self.seed = self.export_custom_seed();
-                                            self.send_params();
-                                        }
-                                        if ui.button("reset").clicked() {
-                                            self.power_matrix[(i, j)] = 0;
-                                            self.send_params();
-                                        }
-                                    });
-                                }
-                            });
+                        ui.vertical(|ui| {
+                            for j in 0..CLASS_COUNT {
+                                ui.horizontal(|ui| {
+                                    ui.label("power of the force applied on");
+                                    let class_name = ui.colored_label(
+                                        self.classes[j].color,
+                                        &self.classes[j].name,
+                                    );
+                                    ui.add_space(5. - class_name.rect.width() / 2.);
+                                    ui.label(":");
+                                    ui.add_space(5. - class_name.rect.width() / 2.);
+                                    if ui
+                                        .add(Slider::new(
+                                            &mut self.power_matrix[(i, j)],
+                                            MIN_POWER..=MAX_POWER,
+                                        ))
+                                        .changed()
+                                    {
+                                        self.seed = self.export_custom_seed();
+                                        self.send_params();
+                                    }
+                                    if ui.button("reset").clicked() {
+                                        self.power_matrix[(i, j)] = 0;
+                                        self.send_params();
+                                    }
+                                });
+                            }
                         });
                     });
                 }
