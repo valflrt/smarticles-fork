@@ -1,4 +1,4 @@
-use rand::distributions::Uniform;
+use rand::{distributions::Uniform, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::mat::Mat2D;
@@ -9,15 +9,27 @@ pub struct Network {
 }
 
 impl Network {
+    /// Crée un nouveau réseau à partir de couches
     pub fn new<L>(layers: L) -> Self
     where
         L: Into<Vec<Layer>>,
     {
-        Self {
-            layers: layers.into(),
+        let layers: Vec<Layer> = layers.into();
+
+        // Vérification de la validité des tailles des couches
+        for window in layers.windows(2) {
+            let l1 = &window[0];
+            let l2 = &window[1];
+            assert_eq!(
+                l1.output_size, l2.input_size,
+                "input size and output size of consecutive layers must match"
+            );
         }
+
+        Self { layers }
     }
 
+    /// Calcule l'image d'une valeur d'entrée par le réseau
     pub fn infer(&self, input: Vec<f32>) -> Vec<f32> {
         let input_size = input.len();
         assert_eq!(
@@ -34,6 +46,8 @@ impl Network {
             .vec()
     }
 
+    /// Mute ce réseau en modifiant aléatoirement les poids et
+    /// les biais
     pub fn mutate(&mut self, mutation_rate: f32) {
         assert!(
             (0. ..=1.).contains(&mutation_rate),
@@ -57,6 +71,9 @@ impl Network {
         }
     }
 
+    /// Calcule le réseau dont les poids et les biais sont la
+    /// moyenne des poids et des biais deux ce réseau et d'un
+    /// autre
     pub fn average(self, other: Self) -> Self {
         let mut out = self.to_owned();
         for i in 0..self.layers.len() {
@@ -64,6 +81,34 @@ impl Network {
                 (&self.layers[i].weights + &other.layers[i].weights).map(|x| x / 2.);
             out.layers[i].biases =
                 (&self.layers[i].biases + &other.layers[i].biases).map(|x| x / 2.);
+        }
+        out
+    }
+
+    /// Combine the current network with another by randomly
+    /// choosing single biases and weights from their two parents.
+    ///
+    /// `selection_probability` is between 0 and 1 and represents
+    /// the probability of the weight/bias the current network being
+    /// chosen.
+    pub fn crossover(self, other: Self, selection_probability: f32) -> Self {
+        let selection_probability = selection_probability as f64;
+        let mut rng = rand::thread_rng();
+
+        let mut out = self.to_owned();
+        for i in 0..self.layers.len() {
+            for (row, column) in self.layers[i].weights.enumerate() {
+                out.layers[i].weights[(row, column)] = if rng.gen_bool(selection_probability) {
+                    self.layers[i].weights[(row, column)]
+                } else {
+                    other.layers[i].weights[(row, column)]
+                };
+                out.layers[i].biases[(row, 0)] = if rng.gen_bool(selection_probability) {
+                    self.layers[i].biases[(row, 0)]
+                } else {
+                    other.layers[i].biases[(row, 0)]
+                };
+            }
         }
         out
     }

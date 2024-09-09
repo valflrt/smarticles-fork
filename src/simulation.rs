@@ -1,34 +1,33 @@
 use std::collections::HashMap;
-use std::f32::consts::TAU;
+use std::f32::consts::{PI, TAU};
 
-use egui::Vec2;
+use eframe::egui::Vec2;
 use rand::random;
 use rayon::prelude::*;
 
-use crate::mat::Mat2D;
-use crate::{CLASS_COUNT, MAX_PARTICLE_COUNT};
+use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
+
+const DAMPING_FACTOR: f32 = 0.06;
+const FORCE_SCALING_FACTOR: f32 = 0.0008;
 
 pub const FIRST_THRESHOLD: f32 = 10.;
-pub const SECOND_THRESHOLD: f32 = 10.;
+pub const SECOND_THRESHOLD: f32 = 12.;
 
-pub const PROXIMITY_FORCE: f32 = -60.;
+pub const INTERACTION_THRESHOLD: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD;
 
-const DAMPING_FACTOR: f32 = 0.1;
-const FORCE_SCALING_FACTOR: f32 = 0.0005;
+pub const PROXIMITY_POWER: f32 = -60.;
 
-const SPAWN_DENSITY: f32 = 0.03;
+const SPAWN_DENSITY: f32 = 12.;
 
-pub fn spawn_area_radius(total_particles: f32) -> f32 {
-    total_particles * SPAWN_DENSITY
-}
+const DEFAULT_PARTICLE_COUNT: usize = 200;
 
-pub fn calculate_force(radius: f32, force: f32) -> f32 {
+pub fn compute_force(radius: f32, power: f32) -> f32 {
     if radius < FIRST_THRESHOLD {
-        (radius / FIRST_THRESHOLD - 1.) * PROXIMITY_FORCE
+        (radius / FIRST_THRESHOLD - 1.) * PROXIMITY_POWER
     } else if radius < FIRST_THRESHOLD + SECOND_THRESHOLD {
-        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD) * force
-    } else if radius < FIRST_THRESHOLD + 2. * SECOND_THRESHOLD {
-        (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * force
+        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD) * power
+    } else if radius < INTERACTION_THRESHOLD {
+        (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * power
     } else {
         0.
     }
@@ -38,7 +37,7 @@ pub fn calculate_force(radius: f32, force: f32) -> f32 {
 struct Cell(i32, i32);
 
 impl Cell {
-    pub const CELL_SIZE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD + 0.1;
+    pub const CELL_SIZE: f32 = INTERACTION_THRESHOLD + 0.1;
 
     pub fn from_position(position: Vec2) -> Self {
         Self(
@@ -47,6 +46,7 @@ impl Cell {
         )
     }
 
+    #[inline]
     pub const fn get_neighbors(&self) -> [Cell; 9] {
         let Cell(x, y) = *self;
         [
@@ -66,9 +66,9 @@ impl Cell {
 #[derive(Debug, Clone)]
 pub struct Simulation {
     pub particle_counts: [usize; CLASS_COUNT],
-    /// Matrix containing force and radius for each particle class
-    /// with respect to each other.
-    pub force_matrix: Mat2D<f32>,
+    /// Matrix containing the power for each particle class with
+    /// respect to each other.
+    pub power_matrix: Mat2D<i8>,
 
     pub particle_prev_positions: Mat2D<Vec2>,
     pub particle_positions: Mat2D<Vec2>,
@@ -80,20 +80,12 @@ impl Simulation {
     fn get_neighboring_particles(&self, cell: Cell) -> Vec<(usize, usize)> {
         cell.get_neighbors()
             .iter()
-            .flat_map(|neighbor| {
-                if let Some(particles) = self.cell_map.get(neighbor) {
-                    particles.iter().copied()
-                } else {
-                    [].iter().copied()
-                }
-            })
-            .collect::<Vec<_>>()
+            .filter_map(|neighbor| self.cell_map.get(neighbor))
+            .flat_map(|particles| particles.iter().copied())
+            .collect()
     }
 
-    fn calculate_particle_update(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
-        // for c1 in 0..CLASS_COUNT {
-        // for c2 in 0..CLASS_COUNT {
-
+    fn compute_position_updates(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
         (0..CLASS_COUNT)
             .into_par_iter()
             .flat_map(|c1| {
@@ -108,12 +100,12 @@ impl Simulation {
                         let neighboring_particles = self.get_neighboring_particles(cell);
                         // println!("{:?}: {}", cell, neighboring_particles.len());
                         for (c2, p2) in neighboring_particles {
-                            let force_factor = -self.force_matrix[(c1, c2)];
+                            let power = -self.power_matrix[(c1, c2)];
                             let other_pos = self.particle_positions[(c2, p2)];
 
                             let direction = other_pos - pos;
                             force -= direction.normalized()
-                                * calculate_force(direction.length(), force_factor)
+                                * compute_force(direction.length(), power as f32)
                                 * FORCE_SCALING_FACTOR;
                         }
 
@@ -127,20 +119,17 @@ impl Simulation {
                     })
             })
             .collect::<Vec<((usize, usize), (Vec2, Vec2))>>()
-
-        // }
-        // }
     }
 
     pub fn move_particles(&mut self) {
-        self.calculate_particle_update()
+        self.organize_particles();
+
+        self.compute_position_updates()
             .iter()
             .for_each(|(index, (pos, new_pos))| {
                 self.particle_prev_positions[*index] = *pos;
                 self.particle_positions[*index] = *new_pos;
             });
-
-        self.organize_particles();
     }
 
     /// Sets all particle positions to zero.
@@ -151,14 +140,12 @@ impl Simulation {
                 self.particle_prev_positions[(c, p)] = Vec2::ZERO
             }
         }
-
-        self.organize_particles();
     }
 
     pub fn spawn(&mut self) {
         self.reset_particles_positions();
 
-        let spawn_radius = spawn_area_radius(self.particle_counts.iter().sum::<usize>() as f32);
+        let spawn_radius = (self.particle_count() as f32 / PI).sqrt() * SPAWN_DENSITY;
 
         for c in 0..CLASS_COUNT {
             for p in 0..self.particle_counts[c] {
@@ -170,24 +157,30 @@ impl Simulation {
                 self.particle_prev_positions[(c, p)] = pos;
             }
         }
-
-        self.organize_particles();
     }
 
     pub fn organize_particles(&mut self) {
-        self.cell_map
-            .values_mut()
-            .for_each(|particles| particles.clear());
+        // Remove empty cells from the hashmap and clear non-empty
+        // ones
+        self.cell_map.retain(|_, particles| {
+            if !particles.is_empty() {
+                particles.clear();
+                true
+            } else {
+                false
+            }
+        });
         for c in 0..CLASS_COUNT {
             for p in 0..self.particle_counts[c] {
                 let particle_index = (c, p);
                 let cell = Cell::from_position(self.particle_positions[particle_index]);
-                self.cell_map
-                    .entry(cell)
-                    .or_insert(Vec::new())
-                    .push(particle_index);
+                self.cell_map.entry(cell).or_default().push(particle_index);
             }
         }
+    }
+
+    pub fn particle_count(&self) -> usize {
+        self.particle_counts.iter().sum::<usize>()
     }
 }
 
@@ -195,8 +188,8 @@ impl Default for Simulation {
     fn default() -> Self {
         let particle_positions = Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT);
         let mut sim = Self {
-            particle_counts: [200; CLASS_COUNT],
-            force_matrix: Mat2D::filled_with(0., CLASS_COUNT, CLASS_COUNT),
+            particle_counts: [DEFAULT_PARTICLE_COUNT; CLASS_COUNT],
+            power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
 
             particle_prev_positions: particle_positions.to_owned(),
             particle_positions,

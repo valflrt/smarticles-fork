@@ -4,17 +4,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-use egui::Vec2;
-use log::debug;
-
 use crate::{
-    ai::net::Network,
-    app::training::{
-        adapt_input, calc_geometric_centers_and_mean_distances, setup_simulation_for_network,
-        INFERENCE_TICK_INTERVAL,
+    ai::{
+        net::Network,
+        training::{
+            adapt_input, apply_output, setup_simulation_for_networks, INFERENCE_TICK_INTERVAL,
+        },
     },
     simulation::Simulation,
-    Senders, SmarticlesEvent, MAX_FORCE,
+    Senders, SmarticlesEvent, CLASS_COUNT,
 };
 
 /// Min update interval in ms (when the simulation is running).
@@ -34,21 +32,21 @@ pub enum NetworkState {
     Running,
 }
 
-pub struct SimulationBackend {
+pub struct SimulationManager {
     simulation_state: SimulationState,
 
     simulation: Simulation,
 
     network: Option<Network>,
-    steps: u8,
+    steps: usize,
     network_state: NetworkState,
-    target_position: Vec2,
+    target_angle: f32,
 
     senders: Senders,
     receiver: Receiver<SmarticlesEvent>,
 }
 
-impl SimulationBackend {
+impl SimulationManager {
     pub fn new(senders: Senders, receiver: Receiver<SmarticlesEvent>) -> Self {
         Self {
             simulation_state: SimulationState::Paused,
@@ -58,7 +56,7 @@ impl SimulationBackend {
             network: None,
             steps: 0,
             network_state: NetworkState::Stopped,
-            target_position: Vec2::ZERO,
+            target_angle: 0.,
 
             senders,
             receiver,
@@ -67,14 +65,13 @@ impl SimulationBackend {
 
     pub fn update(&mut self) -> bool {
         let events = self.receiver.try_iter().collect::<Vec<_>>();
-        debug!("Received events {:?}", events);
         for event in events {
             match event {
                 SmarticlesEvent::Quit => return false,
 
                 SmarticlesEvent::SpawnParticles => {
                     self.simulation.spawn();
-                    self.senders.send_ui(SmarticlesEvent::SimulationResults(
+                    self.senders.send_to_app(SmarticlesEvent::SimulationResults(
                         self.simulation.particle_positions.to_owned(),
                         None,
                     ));
@@ -89,12 +86,12 @@ impl SimulationBackend {
                     self.network = Some(network);
                 }
                 SmarticlesEvent::NetworkStart => {
-                    setup_simulation_for_network(&mut self.simulation);
-                    self.senders.send_ui(SmarticlesEvent::ParticleCountsUpdate(
-                        self.simulation.particle_counts,
-                    ));
-                    self.simulation.spawn();
-                    self.senders.send_ui(SmarticlesEvent::SimulationResults(
+                    setup_simulation_for_networks(&mut self.simulation);
+                    self.senders
+                        .send_to_app(SmarticlesEvent::ParticleCountsUpdate(
+                            self.simulation.particle_counts,
+                        ));
+                    self.senders.send_to_app(SmarticlesEvent::SimulationResults(
                         self.simulation.particle_positions.to_owned(),
                         None,
                     ));
@@ -102,8 +99,8 @@ impl SimulationBackend {
                 }
                 SmarticlesEvent::NetworkStop => self.network_state = NetworkState::Stopped,
 
-                SmarticlesEvent::ForceMatrixChange(force_matrix) => {
-                    self.simulation.force_matrix = force_matrix
+                SmarticlesEvent::PowerMatrixChange(power_matrix) => {
+                    self.simulation.power_matrix = power_matrix
                 }
                 SmarticlesEvent::ParticleCountsUpdate(particle_counts) => {
                     self.simulation.particle_counts = particle_counts
@@ -111,11 +108,12 @@ impl SimulationBackend {
 
                 SmarticlesEvent::SimulationReset => {
                     self.simulation_state = SimulationState::Paused;
+                    self.simulation.particle_counts = [0; CLASS_COUNT];
                     self.simulation.reset_particles_positions();
                 }
 
-                SmarticlesEvent::TargetPositionChange(target_position) => {
-                    self.target_position = target_position
+                SmarticlesEvent::TargetAngleChange(target_angle) => {
+                    self.target_angle = target_angle
                 }
 
                 _ => {}
@@ -129,32 +127,23 @@ impl SimulationBackend {
 
             if self.network_state == NetworkState::Running {
                 if let Some(network) = &self.network {
-                    if self.steps == INFERENCE_TICK_INTERVAL {
-                        let (gcs, ggc) =
-                            calc_geometric_centers_and_mean_distances(&self.simulation);
-
-                        let ggc_to_target_direction = self.target_position - ggc;
-
-                        let mut output = network.infer(adapt_input(
-                            ggc_to_target_direction.normalized(),
-                            gcs,
-                            self.simulation.force_matrix.to_owned(),
+                    if self.steps % INFERENCE_TICK_INTERVAL == 0 {
+                        let output = network.infer(adapt_input(
+                            self.target_angle,
+                            self.simulation.power_matrix.to_owned(),
                         ));
+                        apply_output(output, &mut self.simulation.power_matrix);
 
-                        output.iter_mut().for_each(|x| *x *= MAX_FORCE);
-                        *self.simulation.force_matrix.vec_mut() = output;
-
-                        self.senders.send_ui(SmarticlesEvent::ForceMatrixChange(
-                            self.simulation.force_matrix.to_owned(),
+                        self.senders.send_to_app(SmarticlesEvent::PowerMatrixChange(
+                            self.simulation.power_matrix.to_owned(),
                         ));
-                        self.steps = 0;
                     } else {
                         self.steps += 1;
                     }
                 }
             }
 
-            self.senders.send_ui(SmarticlesEvent::SimulationResults(
+            self.senders.send_to_app(SmarticlesEvent::SimulationResults(
                 self.simulation.particle_positions.to_owned(),
                 Some(elapsed),
             ));
@@ -163,7 +152,6 @@ impl SimulationBackend {
                 sleep(UPDATE_INTERVAL - elapsed);
             }
         } else {
-            debug!("simulation paused, update interval reduced");
             sleep(PAUSED_UPDATE_INTERVAL);
         }
 

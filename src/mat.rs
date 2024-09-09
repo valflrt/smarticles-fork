@@ -57,6 +57,17 @@ where
         &mut self.vec
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.vec.iter()
+    }
+    pub fn iter_enumerate(&self) -> impl Iterator<Item = ((usize, usize), &T)> {
+        self.enumerate().map(|index| (index, &self[index]))
+    }
+    pub fn enumerate(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        (0..self.num_columns())
+            .flat_map(|column| (0..self.num_rows()).map(move |row| (row, column)))
+    }
+
     pub fn num_rows(&self) -> usize {
         self.num_rows
     }
