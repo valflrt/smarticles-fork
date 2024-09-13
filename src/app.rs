@@ -27,9 +27,10 @@ use crate::{
         simulation_manager::{NetworkState, SimulationState},
         ui::DirectionKnob,
     },
+    events::{Recipient, StateUpdate},
     mat::Mat2D,
-    Senders, SmarticlesEvent, CLASS_COUNT, MAX_PARTICLE_COUNT, MAX_POWER, MIN_PARTICLE_COUNT,
-    MIN_POWER, RANDOM_MAX_PARTICLE_COUNT, RANDOM_MIN_PARTICLE_COUNT,
+    Event, Senders, CLASS_COUNT, MAX_PARTICLE_COUNT, MAX_POWER, MIN_PARTICLE_COUNT, MIN_POWER,
+    RANDOM_MAX_PARTICLE_COUNT, RANDOM_MIN_PARTICLE_COUNT,
 };
 
 /// Display diameter of the particles in the simulation (in
@@ -90,7 +91,7 @@ pub struct SmarticlesApp {
     history: VecDeque<String>,
     selected_history_entry: usize,
 
-    computation_time: u128,
+    computation_duration: u128,
 
     particle_counts: [usize; CLASS_COUNT],
     locked_particle_counts: bool,
@@ -106,7 +107,7 @@ pub struct SmarticlesApp {
     generation: usize,
 
     senders: Senders,
-    receiver: Receiver<SmarticlesEvent>,
+    receiver: Receiver<Event>,
 
     simulation_handle: Option<JoinHandle<()>>,
     training_handle: Option<JoinHandle<()>>,
@@ -119,7 +120,7 @@ impl SmarticlesApp {
         classes: [(S, Color32); CLASS_COUNT],
         generation: usize,
         senders: Senders,
-        receiver: Receiver<SmarticlesEvent>,
+        receiver: Receiver<Event>,
         simulation_handle: Option<JoinHandle<()>>,
         training_handle: Option<JoinHandle<()>>,
     ) -> Self
@@ -143,7 +144,10 @@ impl SmarticlesApp {
             .collect();
 
         let target_angle = random_target_angle();
-        senders.send_to_simulation_manager(SmarticlesEvent::TargetAngleChange(target_angle));
+        senders.send(
+            Recipient::Sim,
+            Event::StateUpdate(StateUpdate::new().target_angle(target_angle)),
+        );
 
         Self {
             seed: "".to_string(),
@@ -162,7 +166,7 @@ impl SmarticlesApp {
             history: VecDeque::new(),
             selected_history_entry: 0,
 
-            computation_time: 0,
+            computation_duration: 0,
 
             particle_counts: [0; CLASS_COUNT],
             locked_particle_counts: false,
@@ -217,9 +221,6 @@ impl SmarticlesApp {
                 self.power_matrix[(i, j)] = (pow.signum() * pow.abs().powf(1. / POW_F)) as i8;
             }
         }
-
-        self.send_params();
-        self.send_particle_counts();
     }
     fn export_custom_seed(&self) -> String {
         let mut bytes: Vec<u8> = Vec::new();
@@ -236,19 +237,6 @@ impl SmarticlesApp {
                 self.power_matrix[(i, j)] = bytes.read_i8().unwrap_or(0);
             }
         }
-    }
-
-    fn send_params(&self) {
-        self.senders
-            .send_to_simulation_manager(SmarticlesEvent::PowerMatrixChange(
-                self.power_matrix.to_owned(),
-            ));
-    }
-    fn send_particle_counts(&self) {
-        self.senders
-            .send_to_simulation_manager(SmarticlesEvent::ParticleCountsUpdate(
-                self.particle_counts.to_owned(),
-            ));
     }
 
     fn update_history(&mut self) {
@@ -268,13 +256,11 @@ impl SmarticlesApp {
 
     fn play(&mut self) {
         self.simulation_state = SimulationState::Running;
-        self.senders
-            .send_to_simulation_manager(SmarticlesEvent::SimulationStart);
+        self.senders.send(Recipient::Sim, Event::SimulationStart);
     }
     fn pause(&mut self) {
         self.simulation_state = SimulationState::Paused;
-        self.senders
-            .send_to_simulation_manager(SmarticlesEvent::SimulationPause);
+        self.senders.send(Recipient::Sim, Event::SimulationPause);
     }
     fn reset(&mut self) {
         self.simulation_state = SimulationState::Paused;
@@ -285,12 +271,7 @@ impl SmarticlesApp {
                 self.power_matrix[(i, j)] = 0;
             }
         }
-        self.senders
-            .send_to_simulation_manager(SmarticlesEvent::SimulationReset);
-    }
-    fn spawn(&mut self) {
-        self.senders
-            .send_to_simulation_manager(SmarticlesEvent::SpawnParticles);
+        self.senders.send(Recipient::Sim, Event::SimulationReset);
     }
 }
 
@@ -299,31 +280,45 @@ impl App for SmarticlesApp {
         let events = self.receiver.try_iter();
         for event in events {
             match event {
-                SmarticlesEvent::SimulationResults(positions, elapsed) => {
-                    if let Some(elapsed) = elapsed {
-                        self.computation_time = elapsed.as_millis();
+                Event::StateUpdate(StateUpdate {
+                    particle_positions,
+                    computation_duration,
+
+                    power_matrix,
+                    particle_counts,
+
+                    training_generation,
+                    network_ranking,
+                    target_angle,
+                    ..
+                }) => {
+                    if let Some(particle_positions) = particle_positions {
+                        self.particle_positions = particle_positions;
                     }
-                    self.particle_positions = positions;
+                    if let Some(computation_duration) = computation_duration {
+                        self.computation_duration = computation_duration.as_millis();
+                    }
+
+                    if let Some(power_matrix) = power_matrix {
+                        self.power_matrix = power_matrix;
+                    }
+                    if let Some(particle_counts) = particle_counts {
+                        self.particle_counts = particle_counts;
+                    }
+
+                    if let Some(gen) = training_generation {
+                        self.generation = gen;
+                    }
+                    if let Some(ranking) = network_ranking {
+                        self.network_ranking = Some(ranking);
+                    }
+                    if let Some(target_angle) = target_angle {
+                        self.target_angle = target_angle;
+                    }
                 }
 
-                SmarticlesEvent::PowerMatrixChange(power_matrix) => {
-                    self.power_matrix = power_matrix;
-                }
-
-                SmarticlesEvent::ParticleCountsUpdate(particle_counts) => {
-                    self.particle_counts = particle_counts;
-                }
-
-                SmarticlesEvent::GenerationChange(generation) => {
-                    self.generation = generation;
-                }
-                SmarticlesEvent::NetworkRanking(networks_and_scores) => {
+                Event::TrainingStopped => {
                     self.training_state = TrainingState::Stopped;
-                    self.network_ranking = Some(networks_and_scores);
-                }
-
-                SmarticlesEvent::TargetAngleChange(target_angle) => {
-                    self.target_angle = target_angle;
                 }
 
                 _ => {}
@@ -339,7 +334,7 @@ impl App for SmarticlesApp {
                     .on_hover_text("spawn particles again")
                     .clicked()
                 {
-                    self.spawn();
+                    self.senders.send(Recipient::Sim, Event::SpawnParticles);
                 }
 
                 if self.simulation_state == SimulationState::Running {
@@ -371,7 +366,15 @@ impl App for SmarticlesApp {
                     self.update_history();
 
                     self.apply_seed();
-                    self.spawn();
+                    self.senders.send(
+                        Recipient::Sim,
+                        Event::StateUpdate(
+                            StateUpdate::new()
+                                .power_matrix(&self.power_matrix)
+                                .particle_counts(&self.particle_counts),
+                        ),
+                    );
+                    self.senders.send(Recipient::Sim, Event::SpawnParticles);
                 }
 
                 if ui
@@ -391,9 +394,7 @@ impl App for SmarticlesApp {
                 }
 
                 if ui.button("quit").on_hover_text("exit smarticles").clicked() {
-                    self.senders
-                        .send_to_simulation_manager(SmarticlesEvent::Quit);
-                    self.senders.send_to_training_manager(SmarticlesEvent::Quit);
+                    self.senders.send(Recipient::SimAndTraining, Event::Exit);
                     if let Some(handle) = self.simulation_handle.take() {
                         handle.join().unwrap();
                     };
@@ -411,7 +412,15 @@ impl App for SmarticlesApp {
                     self.update_history();
 
                     self.apply_seed();
-                    self.spawn();
+                    self.senders.send(
+                        Recipient::Sim,
+                        Event::StateUpdate(
+                            StateUpdate::new()
+                                .power_matrix(&self.power_matrix)
+                                .particle_counts(&self.particle_counts),
+                        ),
+                    );
+                    self.senders.send(Recipient::Sim, Event::SpawnParticles);
                 }
             });
 
@@ -426,7 +435,7 @@ impl App for SmarticlesApp {
 
             ui.horizontal(|ui| {
                 ui.label("computation time:");
-                ui.code(self.computation_time.to_string() + "ms");
+                ui.code(self.computation_duration.to_string() + "ms");
             });
 
             if self.history.len() > 1 {
@@ -443,7 +452,15 @@ impl App for SmarticlesApp {
                     {
                         self.history[self.selected_history_entry].clone_into(&mut self.seed);
                         self.apply_seed();
-                        self.spawn();
+                        self.senders.send(
+                            Recipient::Sim,
+                            Event::StateUpdate(
+                                StateUpdate::new()
+                                    .power_matrix(&self.power_matrix)
+                                    .particle_counts(&self.particle_counts),
+                            ),
+                        );
+                        self.senders.send(Recipient::Sim, Event::SpawnParticles);
                     };
                 });
             }
@@ -507,7 +524,7 @@ impl App for SmarticlesApp {
                     if ui.button("evaluate networks").clicked() {
                         self.training_state = TrainingState::Evaluating;
                         self.senders
-                            .send_to_training_manager(SmarticlesEvent::EvaluateNetworks);
+                            .send(Recipient::Training, Event::EvaluateNetworks);
                     }
 
                     [1, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 3000]
@@ -521,12 +538,10 @@ impl App for SmarticlesApp {
                                 self.training_state = TrainingState::Training {
                                     target_generation: self.generation + gen_count,
                                 };
-                                self.senders.send_to_simulation_manager(
-                                    SmarticlesEvent::StartTraining(gen_count),
-                                );
-                                self.senders.send_to_training_manager(
-                                    SmarticlesEvent::StartTraining(gen_count),
-                                );
+                                self.senders
+                                    .send(Recipient::Sim, Event::StartTraining(gen_count));
+                                self.senders
+                                    .send(Recipient::Training, Event::StartTraining(gen_count));
                             }
                         });
                 });
@@ -546,26 +561,31 @@ impl App for SmarticlesApp {
                         if self.network_state == NetworkState::Running {
                             if ui.button("pause network inference").clicked() {
                                 self.network_state = NetworkState::Stopped;
-                                self.senders
-                                    .send_to_simulation_manager(SmarticlesEvent::NetworkStop);
+                                self.senders.send(Recipient::Sim, Event::NetworkStop);
                             }
                         } else if ui.button("start network inference").clicked() {
                             self.network_state = NetworkState::Running;
-                            self.senders.send_to_simulation_manager(
-                                SmarticlesEvent::InferenceNetworkChange(
-                                    ranking[self.selected_network].1.clone(),
+
+                            self.senders.send(
+                                Recipient::Sim,
+                                Event::StateUpdate(
+                                    StateUpdate::new()
+                                        .inference_network(&ranking[self.selected_network].1),
                                 ),
                             );
-                            self.senders
-                                .send_to_simulation_manager(SmarticlesEvent::NetworkStart);
+
+                            self.senders.send(Recipient::Sim, Event::NetworkStart);
                         }
 
                         ui.label("target direction:");
 
                         ui.vertical_centered(|ui| {
                             if ui.add(DirectionKnob::new(&mut self.target_angle)).changed() {
-                                self.senders.send_to_simulation_manager(
-                                    SmarticlesEvent::TargetAngleChange(self.target_angle),
+                                self.senders.send(
+                                    Recipient::Sim,
+                                    Event::StateUpdate(
+                                        StateUpdate::new().target_angle(self.target_angle),
+                                    ),
                                 );
                             };
                         })
@@ -588,8 +608,13 @@ impl App for SmarticlesApp {
                             ))
                             .changed()
                         {
-                            self.send_particle_counts();
-                            self.spawn();
+                            self.senders.send(
+                                Recipient::App,
+                                Event::StateUpdate(
+                                    StateUpdate::new().particle_counts(&self.particle_counts),
+                                ),
+                            );
+                            self.senders.send(Recipient::Sim, Event::SpawnParticles);
                         }
                     });
 
@@ -613,11 +638,21 @@ impl App for SmarticlesApp {
                                         .changed()
                                     {
                                         self.seed = self.export_custom_seed();
-                                        self.send_params();
+                                        self.senders.send(
+                                            Recipient::App,
+                                            Event::StateUpdate(
+                                                StateUpdate::new().power_matrix(&self.power_matrix),
+                                            ),
+                                        );
                                     }
                                     if ui.button("reset").clicked() {
                                         self.power_matrix[(i, j)] = 0;
-                                        self.send_params();
+                                        self.senders.send(
+                                            Recipient::App,
+                                            Event::StateUpdate(
+                                                StateUpdate::new().power_matrix(&self.power_matrix),
+                                            ),
+                                        );
                                     }
                                 });
                             }

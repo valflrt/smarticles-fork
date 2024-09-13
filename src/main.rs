@@ -1,14 +1,14 @@
 mod ai;
 mod app;
+mod events;
 mod mat;
 mod simulation;
 
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::mpsc::{channel, Sender},
+    sync::mpsc::channel,
     thread,
-    time::Duration,
 };
 
 use ai::{
@@ -20,11 +20,11 @@ use app::{
     simulation_manager::SimulationManager, training_manager::TrainingManager, SmarticlesApp,
 };
 use eframe::{
-    egui::{Vec2, ViewportBuilder},
+    egui::ViewportBuilder,
     epaint::{Color32, Hsva},
     NativeOptions,
 };
-use mat::Mat2D;
+use events::{Event, Recipient, Senders};
 use postcard::from_bytes;
 
 const CLASS_COUNT: usize = 4;
@@ -81,9 +81,9 @@ fn main() {
         ..Default::default()
     };
 
-    let (ui_sender, ui_receiver) = channel::<SmarticlesEvent>();
-    let (sim_sender, sim_receiver) = channel::<SmarticlesEvent>();
-    let (training_sender, training_receiver) = channel::<SmarticlesEvent>();
+    let (ui_sender, ui_receiver) = channel::<Event>();
+    let (sim_sender, sim_receiver) = channel::<Event>();
+    let (training_sender, training_receiver) = channel::<Event>();
 
     let senders = Senders::new(ui_sender, sim_sender, training_sender);
 
@@ -91,34 +91,22 @@ fn main() {
         "Smarticles",
         options,
         Box::new(|cc| {
-            let frame = cc.egui_ctx.clone();
+            let ctx = cc.egui_ctx.clone();
 
             let generation = batch.generation;
 
             let senders_clone = senders.clone();
             let training_handle = thread::spawn(move || {
-                let mut training_manager =
-                    TrainingManager::new(batch, senders_clone, training_receiver);
-
-                loop {
-                    if !training_manager.update() {
-                        break;
-                    };
-                }
+                TrainingManager::start(
+                    batch,
+                    senders_clone.origin(Recipient::Training),
+                    training_receiver,
+                )
             });
 
             let senders_clone = senders.clone();
             let simulation_handle = thread::spawn(move || {
-                let mut sim_manager = SimulationManager::new(senders_clone, sim_receiver);
-
-                thread::sleep(Duration::from_millis(500));
-
-                loop {
-                    if !sim_manager.update() {
-                        break;
-                    };
-                    frame.request_repaint();
-                }
+                SimulationManager::start(senders_clone.origin(Recipient::Sim), sim_receiver, ctx);
             });
 
             Ok(Box::new(SmarticlesApp::new(
@@ -142,7 +130,7 @@ fn main() {
                     .try_into()
                     .unwrap(),
                 generation,
-                senders,
+                senders.origin(Recipient::App),
                 ui_receiver,
                 Some(simulation_handle),
                 Some(training_handle),
@@ -150,64 +138,4 @@ fn main() {
         }),
     )
     .unwrap();
-}
-
-#[derive(Debug, Clone)]
-struct Senders {
-    app_sender: Sender<SmarticlesEvent>,
-    sim_sender: Sender<SmarticlesEvent>,
-    training_sender: Sender<SmarticlesEvent>,
-}
-
-impl Senders {
-    pub fn new(
-        ui_sender: Sender<SmarticlesEvent>,
-        sim_sender: Sender<SmarticlesEvent>,
-        training_sender: Sender<SmarticlesEvent>,
-    ) -> Self {
-        Senders {
-            app_sender: ui_sender,
-            sim_sender,
-            training_sender,
-        }
-    }
-
-    pub fn send_to_app(&self, event: SmarticlesEvent) {
-        self.app_sender.send(event).unwrap()
-    }
-    pub fn send_to_simulation_manager(&self, event: SmarticlesEvent) {
-        self.sim_sender.send(event).unwrap()
-    }
-    pub fn send_to_training_manager(&self, event: SmarticlesEvent) {
-        self.training_sender.send(event).unwrap()
-    }
-}
-
-#[derive(Debug, Clone)]
-enum SmarticlesEvent {
-    Quit,
-
-    SpawnParticles,
-
-    /// Particle positions and elapsed time (if available).
-    SimulationResults(Mat2D<Vec2>, Option<Duration>),
-    _SimulationInfo(),
-
-    PowerMatrixChange(Mat2D<i8>),
-    ParticleCountsUpdate([usize; CLASS_COUNT]),
-
-    SimulationStart,
-    SimulationPause,
-    SimulationReset,
-
-    NetworkStart,
-    NetworkStop,
-
-    StartTraining(usize),
-    GenerationChange(usize),
-    NetworkRanking(Vec<(f32, Network)>),
-    EvaluateNetworks,
-
-    InferenceNetworkChange(Network),
-    TargetAngleChange(f32),
 }

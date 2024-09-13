@@ -1,5 +1,9 @@
 use core::f32;
-use std::{sync::mpsc::Receiver, time::Instant};
+use std::{
+    sync::mpsc::Receiver,
+    thread::sleep,
+    time::{Duration, Instant},
+};
 
 use humantime::format_duration;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -9,31 +13,87 @@ use crate::{
         batch::Batch,
         training::{compute_score, evaluation_fn},
     },
-    Senders, SmarticlesEvent,
+    events::{Recipient, StateUpdate},
+    Event, Senders,
 };
 
 pub struct TrainingManager {
     batch: Batch,
 
     senders: Senders,
-    receiver: Receiver<SmarticlesEvent>,
+    receiver: Receiver<Event>,
 }
 
 impl TrainingManager {
-    pub fn new(batch: Batch, senders: Senders, receiver: Receiver<SmarticlesEvent>) -> Self {
-        senders.send_to_app(SmarticlesEvent::NetworkRanking(
-            batch
-                .networks
-                .iter()
-                .map(|network| (0., network.to_owned()))
-                .collect(),
-        ));
+    pub fn start(batch: Batch, senders: Senders, receiver: Receiver<Event>) {
+        senders.send(
+            Recipient::App,
+            Event::StateUpdate(
+                StateUpdate::new().network_ranking(
+                    &batch
+                        .networks
+                        .iter()
+                        .map(|network| (0., network.to_owned()))
+                        .collect(),
+                ),
+            ),
+        );
 
-        Self {
+        let mut slf = TrainingManager {
             batch,
             senders,
             receiver,
+        };
+
+        sleep(Duration::from_millis(500));
+
+        while slf.update() {}
+    }
+
+    pub fn update(&mut self) -> bool {
+        let events = self.receiver.try_iter().collect::<Vec<_>>();
+
+        for ev in events {
+            match ev {
+                Event::StartTraining(gen_count) => {
+                    self.train(gen_count);
+                    self.senders.send(Recipient::App, Event::TrainingStopped);
+                }
+
+                Event::EvaluateNetworks => {
+                    let evaluation_data = self
+                        .batch
+                        .networks
+                        .par_iter()
+                        .cloned()
+                        .map(evaluation_fn)
+                        .collect::<Vec<_>>();
+
+                    self.senders.send(
+                        Recipient::App,
+                        Event::StateUpdate(
+                            StateUpdate::new().network_ranking(
+                                &self
+                                    .batch
+                                    .rank(evaluation_data, compute_score)
+                                    .iter()
+                                    .copied()
+                                    .map(|(i, score)| (score, self.batch.networks[i].to_owned()))
+                                    .collect(),
+                            ),
+                        ),
+                    );
+
+                    self.senders.send(Recipient::App, Event::TrainingStopped);
+                }
+
+                Event::Exit => return false,
+
+                _ => {}
+            }
         }
+
+        true
     }
 
     pub fn train(&mut self, gen_count: usize) {
@@ -96,55 +156,25 @@ impl TrainingManager {
                 self.batch.save();
             }
 
-            self.senders
-                .send_to_app(SmarticlesEvent::GenerationChange(self.batch.generation));
+            self.senders.send(
+                Recipient::App,
+                Event::StateUpdate(StateUpdate::new().training_generation(self.batch.generation)),
+            );
 
             if n + 1 == gen_count {
-                self.senders.send_to_app(SmarticlesEvent::NetworkRanking(
-                    ranking
-                        .iter()
-                        .copied()
-                        .map(|(i, score)| (score, self.batch.networks[i].to_owned()))
-                        .collect(),
-                ));
+                self.senders.send(
+                    Recipient::App,
+                    Event::StateUpdate(
+                        StateUpdate::new().network_ranking(
+                            &ranking
+                                .iter()
+                                .copied()
+                                .map(|(i, score)| (score, self.batch.networks[i].to_owned()))
+                                .collect(),
+                        ),
+                    ),
+                );
             };
         }
-    }
-
-    pub fn update(&mut self) -> bool {
-        let events = self.receiver.try_iter().collect::<Vec<_>>();
-
-        for event in events {
-            match event {
-                SmarticlesEvent::StartTraining(gen_count) => {
-                    self.train(gen_count);
-                }
-
-                SmarticlesEvent::EvaluateNetworks => {
-                    let evaluation_data = self
-                        .batch
-                        .networks
-                        .par_iter()
-                        .cloned()
-                        .map(evaluation_fn)
-                        .collect::<Vec<_>>();
-
-                    self.senders.send_to_app(SmarticlesEvent::NetworkRanking(
-                        self.batch
-                            .rank(evaluation_data, compute_score)
-                            .iter()
-                            .copied()
-                            .map(|(i, score)| (score, self.batch.networks[i].to_owned()))
-                            .collect(),
-                    ))
-                }
-
-                SmarticlesEvent::Quit => return false,
-
-                _ => {}
-            }
-        }
-
-        true
     }
 }
