@@ -10,7 +10,8 @@ use crate::{
     ai::{
         net::Network,
         training::{
-            adapt_input, apply_output, setup_simulation_for_networks, INFERENCE_TICK_INTERVAL,
+            adapt_input, apply_output, setup_simulation_for_networks, spawn_particules,
+            INFERENCE_TICK_INTERVAL,
         },
     },
     events::{Event, Recipient, Senders, StateUpdate},
@@ -115,6 +116,7 @@ impl SimulationManager {
 
                 Event::NetworkStart => {
                     setup_simulation_for_networks(&mut self.simulation);
+                    spawn_particules(self.target_angle, &mut self.simulation);
                     self.senders.send(
                         Recipient::App,
                         Event::StateUpdate(

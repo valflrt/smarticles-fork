@@ -1,4 +1,3 @@
-use core::f32;
 use std::{
     sync::mpsc::Receiver,
     thread::sleep,
@@ -115,21 +114,9 @@ impl TrainingManager {
             let ranking = self.batch.rank(evaluation_data.to_owned(), compute_score);
 
             let start_timestamp = Instant::now();
-
-            self.batch.evolve(ranking.to_owned());
-
+            self.batch.evolve(ranking.to_owned(), 2.);
             let evolve_duration = start_timestamp.elapsed();
 
-            let min = ranking
-                .iter()
-                .map(|(_, score)| score)
-                .copied()
-                .fold(f32::INFINITY, f32::min);
-            let max = ranking
-                .iter()
-                .map(|(_, score)| score)
-                .copied()
-                .fold(f32::NEG_INFINITY, f32::max);
             for (k, (i, score)) in ranking.iter().copied().enumerate() {
                 if (10..ranking.len().checked_sub(10).unwrap_or(10)).contains(&k) {
                     if k == 10 {
@@ -137,12 +124,7 @@ impl TrainingManager {
                     }
                     continue;
                 }
-                println!(
-                    "{:2} -> position: {:.3}, score: {:>20.3}",
-                    i,
-                    (score - min) / (max - min),
-                    score,
-                );
+                println!("{:2} -> position: {:2}, score: {:>20.3}", i, k, score,);
             }
 
             println!(

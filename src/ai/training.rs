@@ -51,11 +51,13 @@ pub fn setup_simulation_for_networks(sim: &mut Simulation) {
     sim.power_matrix.vec_mut().iter_mut().for_each(|p| *p = 0);
 
     sim.reset_particles_positions();
+}
 
+pub fn spawn_particules(target_angle: f32, sim: &mut Simulation) {
     let spawn_radius = (sim.particle_count() as f32 / PI).sqrt() * 3.;
 
     for c in 0..CLASS_COUNT {
-        let class_angle = TAU * (c as f32 / CLASS_COUNT as f32);
+        let class_angle = TAU * (c as f32 / CLASS_COUNT as f32) - target_angle;
 
         for p in 0..sim.particle_counts[c] {
             let particle_angle = TAU * random::<f32>();
@@ -88,11 +90,12 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
         distance_between_particles_avg: 0.,
     };
 
-    let mut sim = Simulation::default();
-    setup_simulation_for_networks(&mut sim);
-
     // angle cible aléatoire
     let mut target_angle = random_target_angle();
+
+    let mut sim = Simulation::default();
+    setup_simulation_for_networks(&mut sim);
+    spawn_particules(target_angle, &mut sim);
 
     let mut prev_gc = calc_geometric_center(&sim);
 

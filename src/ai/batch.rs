@@ -1,4 +1,3 @@
-use core::f32;
 use std::{fs::OpenOptions, io::Write};
 
 use postcard::to_allocvec;
@@ -43,7 +42,7 @@ impl Batch {
 
     /// Évolution des réseau à partir d'un classement: selection
     /// et mutation
-    pub fn evolve(&mut self, ranking: Vec<(usize, f32)>) {
+    pub fn evolve(&mut self, ranking: Vec<(usize, f32)>, mutation_rate: f32) {
         let mut new_networks = Vec::with_capacity(self.networks.len());
 
         let mut rng = rand::thread_rng();
@@ -94,13 +93,13 @@ impl Batch {
                 network1.crossover(network2, 0.99 * weights[i1] / (weights[i1] + weights[i2]))
             } else {
                 let mut network = self.networks[ranking[i1].0].clone();
-                network.mutate(0.2);
+                network.mutate(0.5 * mutation_rate);
                 network
             };
 
             new_network.mutate(
                 // les meilleurs réseaux sont moins mutés que les moins bons
-                (i1 + i2 + l) as f32 / (3 * l) as f32,
+                mutation_rate * (i1 + i2 + l) as f32 / (3 * l) as f32,
             );
 
             new_networks.push(new_network);
