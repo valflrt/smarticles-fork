@@ -49,11 +49,6 @@ impl Network {
     /// Mute ce réseau en modifiant aléatoirement les poids et
     /// les biais
     pub fn mutate(&mut self, mutation_rate: f32) {
-        assert!(
-            (0. ..=1.).contains(&mutation_rate),
-            "mutation rate must be between 0 and 1"
-        );
-
         for i in 0..self.layers.len() {
             let max = mutation_rate / (self.layers[i].input_size as f32).sqrt();
             self.layers[i].weights = &self.layers[i].weights

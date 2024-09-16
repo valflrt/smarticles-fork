@@ -28,7 +28,8 @@ pub fn adapt_input(target_angle: f32, power_matrix: Mat2D<i8>) -> Vec<f32> {
     ]
     .concat()
 }
-/// Change de `power_matrix` selon la sortie du réseau donnée
+/// Change les coefficients de la `power_matrix` selon la
+/// sortie du réseau
 pub fn apply_output(output: Vec<f32>, power_matrix: &mut Mat2D<i8>) {
     power_matrix
         .vec_mut()
@@ -70,8 +71,9 @@ pub fn setup_simulation_for_networks(sim: &mut Simulation) {
 
 #[derive(Debug, Clone)]
 pub struct EvaluationData {
-    /// The average of the projections of the movement direction
-    /// on the target direction
+    /// moyenne de la valeur de la projection du vecteur
+    /// déplacement sur le vecteur unitaire dont la direction est
+    /// la direction cible (angle cible)
     movement_projection_avg: f32,
     /// Distance maximale entre les particules
     max_distance_between_particles: f32,
@@ -89,22 +91,23 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
     let mut sim = Simulation::default();
     setup_simulation_for_networks(&mut sim);
 
+    // angle cible aléatoire
     let mut target_angle = random_target_angle();
 
-    let mut prev_ggc = calc_geometric_center(&sim);
+    let mut prev_gc = calc_geometric_center(&sim);
 
     const MAX_TICK_COUNT: usize = 6000;
     const MAX_INFERENCE_TICK_COUNT: usize = MAX_TICK_COUNT / INFERENCE_TICK_INTERVAL;
 
-    // boucle permettant d'évaluer le réseau pour un certain temps
-    for tick_count in 0..MAX_INFERENCE_TICK_COUNT {
-        let _tick_count: usize = tick_count * INFERENCE_TICK_INTERVAL;
-
+    // boucle permettant d'évaluer le réseau pendant un certain
+    // temps (nombre de ticks)
+    for _ in 0..MAX_INFERENCE_TICK_COUNT {
         // lance INFERENCE_TICK_INTERVAL mises à jour de la position
         // des particules
         for _ in 0..INFERENCE_TICK_INTERVAL {
             sim.move_particles();
-            // petite modification de l'angle cible
+            // petite modification aléatoire de l'angle cible à chaque
+            // mise à jour de la simulation
             target_angle += (random::<f32>() * 2. - 1.) * 0.1;
             if target_angle > PI {
                 target_angle -= 2. * PI;
@@ -117,7 +120,7 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
         let gc = calc_geometric_center(&sim);
 
         // calcul du vecteur déplacement
-        let movement = gc - prev_ggc;
+        let movement = gc - prev_gc;
 
         // calcul du produit scalaire
         evaluation_data.movement_projection_avg += (movement.x * target_angle.cos()
@@ -144,7 +147,7 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
         evaluation_data.distance_between_particles_avg += distance_between_particles_sum
             / (sim.particle_count().pow(2) * MAX_INFERENCE_TICK_COUNT) as f32;
 
-        prev_ggc = gc;
+        prev_gc = gc;
 
         // applique les paramètres donnés par le réseau aux paramètres
         // de la simulation
@@ -180,11 +183,8 @@ pub fn compute_score(evaluation_data: EvaluationData) -> f32 {
     score
 }
 
-/// Returns the geometric centers of each class, the global
-/// geometric center, the mean distances between the geometric
-/// center each particle of each class and the mean distance
-/// between each particle and the global geomtric center:
-/// `(gcs, ggc, mean_distances, global_mean_distance)`
+/// Calcul du centre géométrique: point dont les coordonnées
+/// sont moyenne des coordonnées des positions de particules
 pub fn calc_geometric_center(simulation: &Simulation) -> Vec2 {
     let mut gc_sum = Vec2::ZERO;
     let _gcs: [Vec2; CLASS_COUNT] = array::from_fn(|c| {

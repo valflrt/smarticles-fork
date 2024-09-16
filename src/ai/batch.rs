@@ -35,29 +35,29 @@ impl Batch {
             .enumerate()
             .map(|(i, evaluation_data)| (i, compute_score(evaluation_data.to_owned())))
             .collect::<Vec<_>>();
+
+        // Tri du classement par score décroissant
         ranking.sort_by(|(_, score_1), (_, score_2)| score_2.total_cmp(score_1));
         ranking
     }
 
-    /// Evolution des réseau à partir d'un classement: selection
+    /// Évolution des réseau à partir d'un classement: selection
     /// et mutation
-    pub fn evolve(&mut self, mutation_rate: f32, ranking: Vec<(usize, f32)>) {
-        assert!(
-            (0. ..=1.).contains(&mutation_rate),
-            "mutation rate must be between 0 and 1"
-        );
-
+    pub fn evolve(&mut self, ranking: Vec<(usize, f32)>) {
         let mut new_networks = Vec::with_capacity(self.networks.len());
 
         let mut rng = rand::thread_rng();
 
-        let l = ranking.len();
+        let l = self.networks.len(); // Nombre de réseaux
+
         let scores = ranking
             .iter()
+            // Exclusion de la deuxième moitié du classement
             .take(l / 2 + 1)
             .map(|(_, score)| score)
             .copied();
 
+        // Calcul du score minimal et maximal
         let min = scores.clone().fold(f32::INFINITY, f32::min);
         let max = scores.fold(f32::NEG_INFINITY, f32::max);
 
@@ -94,20 +94,13 @@ impl Batch {
                 network1.crossover(network2, 0.99 * weights[i1] / (weights[i1] + weights[i2]))
             } else {
                 let mut network = self.networks[ranking[i1].0].clone();
-                network.mutate(0.1);
+                network.mutate(0.2);
                 network
             };
 
-            let l = l as f32;
-            let k = ((i1 + i2) as f32) / 2. + 1.;
             new_network.mutate(
-                mutation_rate
-                    // mutate good networks less than bad networks:
-                    // first has a mutation rate of 0.5 and last of 1.
-                    * (2. * k + l)
-                    / (3. * l),
-                // reduce mutation rate when reaching higher generation counts
-                // / ((self.generation as f32) / (1000. * k)).exp(),
+                // les meilleurs réseaux sont moins mutés que les moins bons
+                (i1 + i2 + l) as f32 / (3 * l) as f32,
             );
 
             new_networks.push(new_network);
@@ -118,6 +111,7 @@ impl Batch {
         self.generation += 1;
     }
 
+    /// Enregistre une batch pour garder une trace
     pub fn save(&self) {
         let encoded = to_allocvec::<Batch>(self).unwrap();
         let mut file = OpenOptions::new()

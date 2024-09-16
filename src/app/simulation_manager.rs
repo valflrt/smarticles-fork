@@ -18,9 +18,11 @@ use crate::{
     CLASS_COUNT,
 };
 
-/// Min update interval in ms (when the simulation is running).
+/// Intervalle de mise à jour minimal lorsque la simulation
+/// est en fonctionnement
 const UPDATE_INTERVAL: Duration = Duration::from_millis(30);
-/// Min update rate when the simulation is paused.
+/// Intervalle de mise à jour minimal lorsque la simulation
+/// est en pause
 const PAUSED_UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -28,7 +30,6 @@ pub enum SimulationState {
     Paused,
     Running,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NetworkState {
     Stopped,

@@ -116,7 +116,7 @@ impl TrainingManager {
 
             let start_timestamp = Instant::now();
 
-            self.batch.evolve(1., ranking.to_owned());
+            self.batch.evolve(ranking.to_owned());
 
             let evolve_duration = start_timestamp.elapsed();
 

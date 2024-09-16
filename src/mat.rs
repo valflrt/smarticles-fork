@@ -39,17 +39,6 @@ where
         }
     }
 
-    // pub fn from_iter_rows<I>(iter: I, num_rows: usize, num_columns: usize) -> Self
-    // where
-    //     I: IntoIterator<Item = T>,
-    // {
-    //     Self {
-    //         num_rows,
-    //         num_columns,
-    //         vec: Vec::from_iter(iter),
-    //     }
-    // }
-
     pub fn vec(&self) -> Vec<T> {
         self.vec.to_owned()
     }
