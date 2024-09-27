@@ -124,7 +124,7 @@ impl TrainingManager {
                     }
                     continue;
                 }
-                println!("{:2} -> position: {:2}, score: {:>20.3}", i, k, score,);
+                println!("{:2} -> position: {:2}, score: {:>20}", i, k, score);
             }
 
             println!(

@@ -20,7 +20,7 @@ pub const INFERENCE_TICK_INTERVAL: usize = 20;
 /// Formate les entrées en un vecteur
 pub fn adapt_input(target_angle: f32, power_matrix: Mat2D<i8>) -> Vec<f32> {
     [
-        &[10. * target_angle / TAU],
+        &[target_angle],
         &power_matrix
             .iter()
             .map(|x| *x as f32 / 10.)
@@ -73,8 +73,10 @@ pub fn spawn_particules(target_angle: f32, sim: &mut Simulation) {
 
 #[derive(Debug, Clone)]
 pub struct EvaluationData {
-    /// moyenne de la valeur de la projection du vecteur
-    /// déplacement sur le vecteur unitaire dont la direction est
+    /// Moyenne de la norme du vecteur déplacement
+    movement_norm_avg: f32,
+    /// moyenne de la valeur de la projection du vecteur déplacement
+    /// (normalisé) sur le vecteur unitaire dont la direction est
     /// la direction cible (angle cible)
     movement_projection_avg: f32,
     /// Distance maximale entre les particules
@@ -85,6 +87,7 @@ pub struct EvaluationData {
 
 pub fn evaluation_fn(network: Network) -> EvaluationData {
     let mut evaluation_data = EvaluationData {
+        movement_norm_avg: 0.,
         movement_projection_avg: 0.,
         max_distance_between_particles: 0.,
         distance_between_particles_avg: 0.,
@@ -124,6 +127,10 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
 
         // calcul du vecteur déplacement
         let movement = gc - prev_gc;
+        let movement_norm = movement.length();
+        let movement = movement.normalized();
+
+        evaluation_data.movement_norm_avg += movement_norm / MAX_INFERENCE_TICK_COUNT as f32;
 
         // calcul du produit scalaire
         evaluation_data.movement_projection_avg += (movement.x * target_angle.cos()
@@ -166,21 +173,28 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
 pub fn compute_score(evaluation_data: EvaluationData) -> f32 {
     println!("{:#?}", evaluation_data);
     let EvaluationData {
-        // speed,
+        movement_norm_avg,
         movement_projection_avg,
         max_distance_between_particles,
         distance_between_particles_avg,
         ..
     } = evaluation_data;
 
-    let particle_distance_coefficient =
-        max_distance_between_particles * 0.4 + distance_between_particles_avg * 0.6;
+    // let particle_distance_coefficient =
+    //     max_distance_between_particles * 0.4 + distance_between_particles_avg * 0.6;
 
-    let score = if movement_projection_avg.is_sign_positive() {
-        movement_projection_avg.powi(3) / particle_distance_coefficient
+    let mov_proj = movement_projection_avg * movement_norm_avg;
+
+    let score = if mov_proj > 0. {
+        mov_proj.powi(2)
     } else {
-        movement_projection_avg.powi(3) * particle_distance_coefficient / 10.
+        mov_proj
     };
+    // if movement_projection_avg.is_sign_positive() {
+    //     movement_projection_avg * movement_norm_avg / particle_distance_coefficient
+    // } else {
+    //     movement_projection_avg
+    // };
 
     println!("{:?}", score);
     score

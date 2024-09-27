@@ -107,7 +107,7 @@ impl Simulation {
     }
 
     /// Calcule les nouvelles positions des particules
-    fn compute_position_updates(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
+    fn compute_positions(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
         // Itération sur l'ensemble des particules
         (0..CLASS_COUNT)
             .into_par_iter()
@@ -145,17 +145,17 @@ impl Simulation {
                         // Si P(n), V(n) et A(n) le vecteur position, vitesse et
                         // acceleration respectivement à l'instant n, on a:
                         //
-                        // - V(n+1) = V(n) + A(n)
+                        // - V(n+1) = V(n) + A(n+1)
                         // - P(n+1) = P(n) + V(n+1)
                         //
                         // Donc:
                         //
                         // P(n+1) = P(n) + V(n+1)
-                        //        = P(n) + ( V(n) + A(n) )
-                        //        = P(n) + ( P(n) - P(n-1) + A(n) )
-                        //        = 2*P(n) - P(n-1) + A(n)
+                        //        = P(n) + ( V(n) + A(n+1) )
+                        //        = P(n) + ( P(n) - P(n-1) + A(n+1) )
+                        //        = 2*P(n) - P(n-1) + A(n+1)
                         //
-                        // On peut ensuite déterminer l'accélération à l'aide de la
+                        // On peut ensuite calculer l'accélération à l'aide de la
                         // seconde loi de Newton: m*A(n) = F(n) et en prenant m = 1:
                         //
                         // P(n+1) = 2*P(n) - P(n-1) + F(n)
@@ -172,7 +172,7 @@ impl Simulation {
         self.organize_particles();
 
         // Mise à jour des positions
-        self.compute_position_updates()
+        self.compute_positions()
             .iter()
             .for_each(|(index, (pos, new_pos))| {
                 self.particle_prev_positions[*index] = *pos;
