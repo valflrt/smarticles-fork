@@ -82,39 +82,49 @@ impl Simulation {
     }
 
     fn compute_position_updates(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
-        (0..CLASS_COUNT)
-            .into_par_iter()
-            .flat_map(|c1| {
-                (0..self.particle_counts[c1])
-                    .into_par_iter()
-                    .map(move |p1| {
-                        let mut force = Vec2::ZERO;
+        self.cell_map
+            .par_iter()
+            .map(|(cell, particles)| {
+                // Fetch the particles of neighboring cells
+                let neighboring_particules = self.get_neighboring_particles(*cell);
 
-                        let pos = self.particle_positions[(c1, p1)];
-                        let cell = Cell::from_position(pos);
+                let mut new_positions: Vec<((usize, usize), (Vec2, Vec2))> = Vec::new();
 
-                        let neighboring_particles = self.get_neighboring_particles(cell);
-                        // println!("{:?}: {}", cell, neighboring_particles.len());
-                        for (c2, p2) in neighboring_particles {
-                            let power = -self.power_matrix[(c1, c2)];
-                            let other_pos = self.particle_positions[(c2, p2)];
+                for &(c1, p1) in particles {
+                    let mut force = Vec2::ZERO;
 
-                            let direction = other_pos - pos;
-                            force -= direction.normalized()
-                                * compute_force(direction.length(), power as f32)
-                                * FORCE_SCALING_FACTOR;
-                        }
+                    let pos = self.particle_positions[(c1, p1)];
 
-                        let prev_pos = self.particle_prev_positions[(c1, p1)];
+                    for &(c2, p2) in &neighboring_particules {
+                        let power = -self.power_matrix[(c1, c2)];
+                        let other_pos = self.particle_positions[(c2, p2)];
 
-                        force += (prev_pos - pos) * DAMPING_FACTOR;
+                        let distance = other_pos - pos;
+                        force -= distance.normalized()
+                            * compute_force(distance.length(), power as f32)
+                            * FORCE_SCALING_FACTOR;
+                    }
 
-                        let new_pos = 2. * pos - prev_pos + force;
+                    let prev_pos = self.particle_prev_positions[(c1, p1)];
 
-                        ((c1, p1), (pos, new_pos))
-                    })
+                    // add damping force
+                    force += (prev_pos - pos) * DAMPING_FACTOR;
+
+                    // Verlet integration
+                    let new_pos = 2. * pos - prev_pos + force;
+
+                    new_positions.push(((c1, p1), (pos, new_pos)));
+                }
+
+                new_positions
             })
-            .collect::<Vec<((usize, usize), (Vec2, Vec2))>>()
+            .reduce(
+                || Vec::new(),
+                |mut acc, v| {
+                    acc.extend(v);
+                    acc
+                },
+            )
     }
 
     pub fn move_particles(&mut self) {

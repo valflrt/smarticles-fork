@@ -108,3 +108,5 @@
   - `spitter_relate_longwool`
   - `mulct_chukor_caama`
   - `justs_klosh_kendoist`
+- Added after `v1.0.0`
+  - `caprylyl_plumbed_triacids`
