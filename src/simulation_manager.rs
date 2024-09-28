@@ -68,6 +68,11 @@ impl SimulationManager {
                     self.simulation_state = SimulationState::Paused;
                     self.simulation.particle_counts = [0; CLASS_COUNT];
                     self.simulation.reset_particles_positions();
+                    self.simulation
+                        .power_matrix
+                        .vec_mut()
+                        .iter_mut()
+                        .for_each(|p| *p = 0);
                 }
 
                 _ => {}
