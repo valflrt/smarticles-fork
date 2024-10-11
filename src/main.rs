@@ -13,6 +13,9 @@ use mat::Mat2D;
 
 use crate::{app::SmarticlesApp, simulation_manager::SimulationManager};
 
+#[cfg(feature = "cell_map_display")]
+use simulation::Cell;
+
 mod app;
 mod mat;
 mod simulation;
@@ -137,7 +140,9 @@ enum SmarticlesEvent {
 
     /// Particle positions and elapsed time (if available).
     SimulationResults(Mat2D<Vec2>, Option<Duration>),
-    _SimulationInfo(),
+
+    #[cfg(feature = "cell_map_display")]
+    CellMap(Vec<Cell>),
 
     PowerMatrixChange(Mat2D<i8>),
     ParticleCountsUpdate([usize; CLASS_COUNT]),

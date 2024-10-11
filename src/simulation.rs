@@ -30,15 +30,15 @@ pub fn compute_force(radius: f32, power: f32) -> f32 {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-struct Cell(i32, i32);
+pub struct Cell(pub i32, pub i32);
 
 impl Cell {
     pub const CELL_SIZE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD + 0.1;
 
     pub fn from_position(position: Vec2) -> Self {
         Self(
-            (position.x / Self::CELL_SIZE) as i32,
-            (position.y / Self::CELL_SIZE) as i32,
+            (position.x / Self::CELL_SIZE).floor() as i32,
+            (position.y / Self::CELL_SIZE).floor() as i32,
         )
     }
 
@@ -69,7 +69,7 @@ pub struct Simulation {
     pub particle_prev_positions: Mat2D<Vec2>,
     pub particle_positions: Mat2D<Vec2>,
 
-    cell_map: HashMap<Cell, Vec<(usize, usize)>>,
+    pub cell_map: HashMap<Cell, Vec<(usize, usize)>>,
 }
 
 impl Simulation {

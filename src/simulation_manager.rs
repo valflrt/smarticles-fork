@@ -89,6 +89,11 @@ impl SimulationManager {
                 Some(elapsed),
             ));
 
+            #[cfg(feature = "cell_map_display")]
+            self.senders.send_ui(SmarticlesEvent::CellMap(
+                self.simulation.cell_map.keys().copied().collect::<Vec<_>>(),
+            ));
+
             if elapsed < UPDATE_INTERVAL {
                 sleep(UPDATE_INTERVAL - elapsed);
             }

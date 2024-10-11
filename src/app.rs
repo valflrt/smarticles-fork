@@ -23,6 +23,12 @@ use crate::{
     RANDOM_MIN_PARTICLE_COUNT,
 };
 
+#[cfg(feature = "cell_map_display")]
+use {
+    crate::simulation::Cell,
+    eframe::egui::{Rect, Rounding},
+};
+
 /// Display diameter of the particles in the simulation (in
 /// pixels).
 const PARTICLE_DIAMETER: f32 = 0.6;
@@ -79,6 +85,9 @@ pub struct SmarticlesApp {
     particle_positions: Mat2D<Vec2>,
     power_matrix: Mat2D<i8>,
     simulation_state: SimulationState,
+
+    #[cfg(feature = "cell_map_display")]
+    cell_map: Option<Vec<Cell>>,
 
     senders: Senders,
     receiver: Receiver<SmarticlesEvent>,
@@ -138,6 +147,9 @@ impl SmarticlesApp {
             particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
             power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
             simulation_state: SimulationState::Paused,
+
+            #[cfg(feature = "cell_map_display")]
+            cell_map: None,
 
             senders,
             receiver,
@@ -264,6 +276,11 @@ impl App for SmarticlesApp {
 
                 SmarticlesEvent::PowerMatrixChange(power_matrix) => {
                     self.power_matrix = power_matrix;
+                }
+
+                #[cfg(feature = "cell_map_display")]
+                SmarticlesEvent::CellMap(cell_map) => {
+                    self.cell_map = Some(cell_map);
                 }
 
                 _ => {}
@@ -540,23 +557,38 @@ impl App for SmarticlesApp {
                     Color32::WHITE,
                 );
 
+                #[cfg(feature = "cell_map_display")]
+                if let Some(cell_map) = &self.cell_map {
+                    for c in cell_map {
+                        let pos = (center
+                            + Vec2::new(c.0 as f32, c.1 as f32) * Cell::CELL_SIZE * self.view.zoom)
+                            .to_pos2();
+                        paint
+                            .clip_rect()
+                            .extend_with(pos - Vec2::splat(Cell::CELL_SIZE * self.view.zoom));
+                        paint.rect_stroke(
+                            Rect::from_min_size(pos, Vec2::splat(Cell::CELL_SIZE) * self.view.zoom),
+                            Rounding::ZERO,
+                            Stroke::new(1., Color32::DARK_GRAY),
+                        );
+                    }
+                }
+
                 for c in 0..CLASS_COUNT {
                     let class = &self.classes[c];
 
                     for p in 0..self.particle_counts[c] {
                         let pos =
                             (center + self.particle_positions[(c, p)] * self.view.zoom).to_pos2();
-                        if paint.clip_rect().contains(pos) {
-                            paint.circle_filled(
-                                pos,
-                                if (c, p) == self.selected_particle {
-                                    PARTICLE_DIAMETER * 3.
-                                } else {
-                                    PARTICLE_DIAMETER
-                                } * self.view.zoom,
-                                class.color,
-                            );
-                        }
+                        paint.circle_filled(
+                            pos,
+                            if (c, p) == self.selected_particle {
+                                PARTICLE_DIAMETER * 3.
+                            } else {
+                                PARTICLE_DIAMETER
+                            } * self.view.zoom,
+                            class.color,
+                        );
                     }
                 }
             });
