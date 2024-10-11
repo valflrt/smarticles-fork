@@ -106,3 +106,5 @@
   - `heuchs_scarman_endorsor`
   - `spinouts_amlet_hatsful`
   - `abasers_sacred_fusk`
+- Added after `1.0.0`
+  - `chapatis_raceway_chufa`

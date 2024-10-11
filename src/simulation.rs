@@ -109,62 +109,66 @@ impl Simulation {
     /// Calcule les nouvelles positions des particules
     fn compute_positions(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
         // Itération sur l'ensemble des particules
-        (0..CLASS_COUNT)
-            .into_par_iter()
-            .flat_map(|c1| {
-                (0..self.particle_counts[c1])
-                    .into_par_iter() // itérateur parallèle
-                    .map(move |p1| {
-                        // Initialise la force à 0
-                        let mut force = Vec2::ZERO;
+        self.cell_map
+            .par_iter()
+            .map(|(cell, particle_ids)| {
+                // Récupère les particules des cellules voisines
+                let neighboring_particules = self.get_neighboring_particles(*cell);
 
-                        let pos = self.particle_positions[(c1, p1)];
-                        let cell = Cell::from_position(pos);
+                let mut new_positions: Vec<((usize, usize), (Vec2, Vec2))> = Vec::new();
 
-                        // Récupère les particules des cellules voisines
-                        let neighboring_particles = self.get_neighboring_particles(cell);
+                for &(c1, p1) in particle_ids {
+                    let mut force = Vec2::ZERO;
 
-                        for (c2, p2) in neighboring_particles {
-                            let power = -self.power_matrix[(c1, c2)];
-                            let other_pos = self.particle_positions[(c2, p2)];
+                    let pos = self.particle_positions[(c1, p1)];
 
-                            // Calcul de la distance (vectorielle) entre les deux particules
-                            let distance = other_pos - pos;
-                            force -= distance.normalized()
-                                * compute_force(distance.length(), power as f32)
-                                * FORCE_SCALING_FACTOR;
-                        }
+                    for &(c2, p2) in &neighboring_particules {
+                        let power = self.power_matrix[(c1, c2)];
+                        let other_pos = self.particle_positions[(c2, p2)];
 
-                        let prev_pos = self.particle_prev_positions[(c1, p1)];
+                        // Calcul de la distance (vectorielle) entre les deux particules
+                        let distance = other_pos - pos;
+                        force -= distance.normalized()
+                            * compute_force(distance.length(), power as f32)
+                            * FORCE_SCALING_FACTOR;
+                    }
 
-                        // ajout d'une force de frottement
-                        force += (prev_pos - pos) * DAMPING_FACTOR;
+                    let prev_pos = self.particle_prev_positions[(c1, p1)];
 
-                        // Calcul de la nouvelle position à l'aide de l'integration
-                        // de Verlet:
-                        // Si P(n), V(n) et A(n) le vecteur position, vitesse et
-                        // acceleration respectivement à l'instant n, on a:
-                        //
-                        // - V(n+1) = V(n) + A(n+1)
-                        // - P(n+1) = P(n) + V(n+1)
-                        //
-                        // Donc:
-                        //
-                        // P(n+1) = P(n) + V(n+1)
-                        //        = P(n) + ( V(n) + A(n+1) )
-                        //        = P(n) + ( P(n) - P(n-1) + A(n+1) )
-                        //        = 2*P(n) - P(n-1) + A(n+1)
-                        //
-                        // On peut ensuite calculer l'accélération à l'aide de la
-                        // seconde loi de Newton: m*A(n) = F(n) et en prenant m = 1:
-                        //
-                        // P(n+1) = 2*P(n) - P(n-1) + F(n)
-                        let new_pos = 2. * pos - prev_pos + force;
+                    // ajout d'une force de frottement
+                    force += (prev_pos - pos) * DAMPING_FACTOR;
 
-                        ((c1, p1), (pos, new_pos))
-                    })
+                    // Calcul de la nouvelle position à l'aide de l'integration
+                    // de Verlet:
+                    // Si P(n), V(n) et A(n) le vecteur position, vitesse et
+                    // acceleration respectivement à l'instant n, on a:
+                    //
+                    // - A(n+1) = F(n+1): seconde loi de Newton à l'instant n+1
+                    // - V(n+1) = V(n) + A(n+1)
+                    // - P(n+1) = P(n) + V(n+1)
+                    //
+                    // Donc:
+                    //
+                    // P(n+1) = P(n) + V(n+1)
+                    //        = P(n) + ( V(n) + A(n+1) )
+                    //        = P(n) + ( P(n) - P(n-1) + A(n+1) )
+                    //        = 2*P(n) - P(n-1) + A(n+1)
+                    //
+                    // P(n+1) = 2*P(n) - P(n-1) + F(n)
+                    let new_pos = 2. * pos - prev_pos + force;
+
+                    new_positions.push(((c1, p1), (pos, new_pos)));
+                }
+
+                new_positions
             })
-            .collect::<Vec<((usize, usize), (Vec2, Vec2))>>()
+            .reduce(
+                || Vec::new(),
+                |mut acc, v| {
+                    acc.extend(v);
+                    acc
+                },
+            )
     }
 
     /// Déplace les particules
