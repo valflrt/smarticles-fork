@@ -5,9 +5,9 @@
   - Fonctionnement général
     - Classes et forces
   - Améliorations apportées
-		- multithreading
-		- Intégration de Verlet
-		- Partitionnement spatial
+    - multithreading
+    - Intégration de Verlet
+    - Partitionnement spatial
 - Présentation de l'algorithme d'entraînement
   - Étapes de recherche
     - Rencontre à l'université avec Mr Imekraz et Mr ??? pour parler du l'algorithme de descente de gradient

@@ -83,6 +83,8 @@ pub struct EvaluationData {
     max_distance_between_particles: f32,
     /// Distance moyenne entre les particules
     distance_between_particles_avg: f32,
+    ///
+    average_power_change: f32,
 }
 
 pub fn evaluation_fn(network: Network) -> EvaluationData {
@@ -91,6 +93,7 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
         movement_projection_avg: 0.,
         max_distance_between_particles: 0.,
         distance_between_particles_avg: 0.,
+        average_power_change: 0.,
     };
 
     // angle cible aléatoire
@@ -114,13 +117,10 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
             sim.move_particles();
             // petite modification aléatoire de l'angle cible à chaque
             // mise à jour de la simulation
-            target_angle += (random::<f32>() * 2. - 1.) * 0.1;
-            if target_angle > PI {
-                target_angle -= 2. * PI;
-            } else if target_angle < -PI {
-                target_angle += 2. * PI;
-            }
         }
+
+        target_angle =
+            (target_angle + TAU * (random::<f32>() * 2. - 1.) / 4. + PI).rem_euclid(2. * PI) - PI;
 
         // calcul du centre géométrique
         let gc = calc_geometric_center(&sim);
@@ -162,6 +162,18 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
         // applique les paramètres donnés par le réseau aux paramètres
         // de la simulation
         let output = network.infer(adapt_input(target_angle, sim.power_matrix.to_owned()));
+
+        evaluation_data.average_power_change += sim
+            .power_matrix
+            .vec()
+            .iter()
+            .enumerate()
+            .map(|(i, power)| {
+                (*power - (*power + (output[i] * 10.) as i8).clamp(-MAX_POWER, MAX_POWER)).pow(2)
+            })
+            .sum::<i8>() as f32
+            / (CLASS_COUNT * MAX_INFERENCE_TICK_COUNT) as f32;
+
         apply_output(output, &mut sim.power_matrix);
     }
 
@@ -173,28 +185,18 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
 pub fn compute_score(evaluation_data: EvaluationData) -> f32 {
     println!("{:#?}", evaluation_data);
     let EvaluationData {
-        movement_norm_avg,
+        // movement_norm_avg,
         movement_projection_avg,
-        max_distance_between_particles,
-        distance_between_particles_avg,
+        // max_distance_between_particles,
+        // distance_between_particles_avg,
+        // average_power_change,
         ..
     } = evaluation_data;
 
     // let particle_distance_coefficient =
     //     max_distance_between_particles * 0.4 + distance_between_particles_avg * 0.6;
 
-    let mov_proj = movement_projection_avg * movement_norm_avg;
-
-    let score = if mov_proj > 0. {
-        mov_proj.powi(2)
-    } else {
-        mov_proj
-    };
-    // if movement_projection_avg.is_sign_positive() {
-    //     movement_projection_avg * movement_norm_avg / particle_distance_coefficient
-    // } else {
-    //     movement_projection_avg
-    // };
+    let score = movement_projection_avg;
 
     println!("{:?}", score);
     score

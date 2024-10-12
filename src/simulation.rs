@@ -54,8 +54,8 @@ impl Cell {
     /// Créé une cellule à partir d'une position
     pub fn from_position(position: Vec2) -> Self {
         Self(
-            (position.x / Self::CELL_SIZE) as i32,
-            (position.y / Self::CELL_SIZE) as i32,
+            (position.x / Self::CELL_SIZE).floor() as i32,
+            (position.y / Self::CELL_SIZE).floor() as i32,
         )
     }
 
