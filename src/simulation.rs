@@ -7,13 +7,13 @@ use rayon::prelude::*;
 
 use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 
-pub const FIRST_THRESHOLD: f32 = 10.;
-pub const SECOND_THRESHOLD: f32 = 12.;
+pub const FIRST_THRESHOLD: f32 = 10.; // 10.
+pub const SECOND_THRESHOLD: f32 = 20.; // 12.
 
-pub const PROXIMITY_POWER: f32 = -60.;
+pub const PROXIMITY_POWER: f32 = -60.; // -60.
 
-const DAMPING_FACTOR: f32 = 0.06;
-const FORCE_SCALING_FACTOR: f32 = 0.0008;
+const DAMPING_FACTOR: f32 = 0.08; // 0.06
+const FORCE_SCALING_FACTOR: f32 = 0.0004; // 0.0008
 
 const SPAWN_DENSITY: f32 = 12.;
 
@@ -61,6 +61,7 @@ impl Cell {
 
 #[derive(Debug, Clone)]
 pub struct Simulation {
+    pub enabled_classes: [bool; CLASS_COUNT],
     pub particle_counts: [usize; CLASS_COUNT],
     /// Matrix containing the power for each particle class with
     /// respect to each other.
@@ -78,6 +79,8 @@ impl Simulation {
             .iter()
             .filter_map(|neighbor| self.cell_map.get(neighbor))
             .flat_map(|particles| particles.iter().copied())
+            // only handle enabled classes
+            .filter(|(c, _)| self.enabled_classes[*c])
             .collect()
     }
 
@@ -90,11 +93,13 @@ impl Simulation {
 
                 let mut new_positions: Vec<((usize, usize), (Vec2, Vec2))> = Vec::new();
 
-                for &(c1, p1) in particles {
+                for &(c1, p1) in particles.iter().filter(|(c, _)| self.enabled_classes[*c]) {
                     let mut force = Vec2::ZERO;
 
                     let pos = self.particle_positions[(c1, p1)];
 
+                    // there are only particles from enabled classes in
+                    // `neighboring_particules` (see `get_neighboring_particles`)
                     for &(c2, p2) in &neighboring_particules {
                         let power = -self.power_matrix[(c1, c2)];
                         let other_pos = self.particle_positions[(c2, p2)];
@@ -156,12 +161,16 @@ impl Simulation {
         let spawn_radius =
             (self.particle_counts.iter().sum::<usize>() as f32 / PI).sqrt() * SPAWN_DENSITY;
 
-        for c in 0..CLASS_COUNT {
+        for c in (0..CLASS_COUNT).filter(|c| self.enabled_classes[*c]) {
             for p in 0..self.particle_counts[c] {
                 let angle = TAU * random::<f32>();
                 let distance = random::<f32>().sqrt() * spawn_radius;
 
-                let pos = Vec2::new(distance * angle.cos(), distance * angle.sin());
+                let pos = Vec2::new(
+                    distance * angle.cos() + (0.5 - random::<f32>()) * spawn_radius,
+                    distance * angle.sin() + (0.5 - random::<f32>()) * spawn_radius,
+                );
+
                 self.particle_positions[(c, p)] = pos;
                 self.particle_prev_positions[(c, p)] = pos;
             }
@@ -181,7 +190,7 @@ impl Simulation {
                 false
             }
         });
-        for c in 0..CLASS_COUNT {
+        for c in (0..CLASS_COUNT).filter(|c| self.enabled_classes[*c]) {
             for p in 0..self.particle_counts[c] {
                 let particle_index = (c, p);
                 let cell = Cell::from_position(self.particle_positions[particle_index]);
@@ -195,6 +204,7 @@ impl Default for Simulation {
     fn default() -> Self {
         let particle_positions = Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT);
         let mut sim = Self {
+            enabled_classes: [true; CLASS_COUNT],
             particle_counts: [200; CLASS_COUNT],
             power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
 

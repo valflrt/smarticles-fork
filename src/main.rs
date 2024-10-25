@@ -1,3 +1,8 @@
+mod app;
+mod mat;
+mod simulation;
+mod simulation_manager;
+
 use std::{
     sync::mpsc::{channel, Sender},
     thread,
@@ -15,11 +20,6 @@ use crate::{app::SmarticlesApp, simulation_manager::SimulationManager};
 
 #[cfg(feature = "cell_map_display")]
 use simulation::Cell;
-
-mod app;
-mod mat;
-mod simulation;
-mod simulation_manager;
 
 // IDEA Add recordings ? By exporting positions of all the
 // particles each frame ? That would make around 8000 postions
@@ -90,7 +90,8 @@ fn main() {
                     .map(|(i, class_name)| {
                         let [r, g, b] = Hsva::new(
                             // tinkering to make purple appear first. I like purple.
-                            (((CLASS_COUNT - i - 1) % CLASS_COUNT) as f32) / (CLASS_COUNT as f32),
+                            0.2 + 0.8 * (((CLASS_COUNT - i - 1) % CLASS_COUNT) as f32)
+                                / (CLASS_COUNT as f32),
                             0.9,
                             0.9,
                             1.,
@@ -144,6 +145,8 @@ enum SmarticlesEvent {
     #[cfg(feature = "cell_map_display")]
     CellMap(Vec<Cell>),
 
+    EnableClass(usize),
+    DisableClass(usize),
     PowerMatrixChange(Mat2D<i8>),
     ParticleCountsUpdate([usize; CLASS_COUNT]),
 

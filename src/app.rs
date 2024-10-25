@@ -8,12 +8,13 @@ use std::{
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use eframe::{
     egui::{
-        Align2, CentralPanel, ComboBox, Context, FontId, PointerButton, ScrollArea, Sense,
-        SidePanel, Slider, Stroke, Vec2,
+        Align2, Area, CentralPanel, ComboBox, Context, PointerButton, ScrollArea, Sense, SidePanel,
+        Slider, Vec2,
     },
     epaint::Color32,
     App, Frame,
 };
+use egui_plot::{Line, Plot, PlotPoints};
 use rand::{distributions::Open01, rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
 
@@ -26,7 +27,7 @@ use crate::{
 #[cfg(feature = "cell_map_display")]
 use {
     crate::simulation::Cell,
-    eframe::egui::{Rect, Rounding},
+    eframe::egui::{Rect, Rounding, Stroke},
 };
 
 /// Display diameter of the particles in the simulation (in
@@ -63,12 +64,15 @@ struct ClassProps {
     name: String,
     heading: String,
     color: Color32,
+    enabled: bool,
 }
 
 pub struct SmarticlesApp {
     classes: [ClassProps; CLASS_COUNT],
 
     seed: String,
+
+    show_ui: bool,
 
     view: View,
 
@@ -78,7 +82,7 @@ pub struct SmarticlesApp {
     history: VecDeque<String>,
     selected_history_entry: usize,
 
-    computation_time: u128,
+    computation_time_graph: VecDeque<f32>,
 
     particle_counts: [usize; CLASS_COUNT],
     locked_particle_counts: bool,
@@ -130,7 +134,10 @@ impl SmarticlesApp {
                 name: name.to_string(),
                 heading: "class ".to_string() + &name.to_string(),
                 color,
+                enabled: true,
             }),
+
+            show_ui: true,
 
             view: View::DEFAULT,
 
@@ -140,7 +147,7 @@ impl SmarticlesApp {
             history: VecDeque::new(),
             selected_history_entry: 0,
 
-            computation_time: 0,
+            computation_time_graph: VecDeque::new(),
 
             particle_counts: [0; CLASS_COUNT],
             locked_particle_counts: false,
@@ -167,6 +174,7 @@ impl SmarticlesApp {
             if self.seed.starts_with('@') {
                 if let Ok(bytes) = base64::decode(&self.seed[1..]) {
                     self.apply_custom_seed(&bytes);
+
                     return;
                 }
             }
@@ -190,9 +198,6 @@ impl SmarticlesApp {
                 self.power_matrix[(i, j)] = (pow.signum() * pow.abs().powf(1. / POW_F)) as i8;
             }
         }
-
-        self.send_params();
-        self.send_particle_counts();
     }
     fn export_custom_seed(&self) -> String {
         let mut bytes: Vec<u8> = Vec::new();
@@ -212,7 +217,7 @@ impl SmarticlesApp {
         }
     }
 
-    fn send_params(&self) {
+    fn send_power_matrix(&self) {
         self.senders.send_sim(SmarticlesEvent::PowerMatrixChange(
             self.power_matrix.to_owned(),
         ));
@@ -269,7 +274,11 @@ impl App for SmarticlesApp {
             match event {
                 SmarticlesEvent::SimulationResults(positions, elapsed) => {
                     if let Some(elapsed) = elapsed {
-                        self.computation_time = elapsed.as_millis();
+                        self.computation_time_graph
+                            .push_front(elapsed.as_secs_f32() * 1000.);
+                        if self.computation_time_graph.len() > 200 {
+                            self.computation_time_graph.truncate(200);
+                        }
                     }
                     self.particle_positions = positions;
                 }
@@ -287,209 +296,271 @@ impl App for SmarticlesApp {
             }
         }
 
-        SidePanel::left("settings").show(ctx, |ui| {
-            ui.heading("settings");
-            ui.separator();
-            ui.horizontal(|ui| {
-                if ui
-                    .button("respawn")
-                    .on_hover_text("spawn particles again")
-                    .clicked()
-                {
-                    self.spawn();
-                }
-
-                if self.simulation_state == SimulationState::Running {
+        if self.show_ui {
+            SidePanel::left("settings").show(ctx, |ui| {
+                ui.heading("settings");
+                ui.separator();
+                ui.horizontal(|ui| {
                     if ui
-                        .button("pause")
-                        .on_hover_text("pause the simulation")
+                        .button("respawn")
+                        .on_hover_text("spawn particles again")
                         .clicked()
                     {
-                        self.pause();
-                    }
-                } else if ui
-                    .button("play")
-                    .on_hover_text("start the simulation")
-                    .clicked()
-                {
-                    self.play();
-                }
-
-                if ui
-                    .button("randomize")
-                    .on_hover_text("randomly pick a new seed")
-                    .clicked()
-                {
-                    let w1 = rand::random::<usize>() % self.words.len();
-                    let w2 = rand::random::<usize>() % self.words.len();
-                    let w3 = rand::random::<usize>() % self.words.len();
-                    self.seed = format!("{}_{}_{}", self.words[w1], self.words[w2], self.words[w3]);
-
-                    self.update_history();
-
-                    self.apply_seed();
-                    self.spawn();
-                }
-
-                if ui
-                    .button("reset view")
-                    .on_hover_text("reset zoom and view position")
-                    .clicked()
-                {
-                    self.view = View::DEFAULT;
-                }
-
-                if ui
-                    .button("reset")
-                    .on_hover_text("reset everything")
-                    .clicked()
-                {
-                    self.reset();
-                }
-
-                if ui.button("quit").on_hover_text("exit smarticles").clicked() {
-                    self.senders.send_sim(SmarticlesEvent::Quit);
-                    if let Some(handle) = self.simulation_handle.take() {
-                        handle.join().unwrap();
-                    };
-                    ui.ctx()
-                        .send_viewport_cmd(eframe::egui::ViewportCommand::Close);
-                }
-            });
-            ui.horizontal(|ui| {
-                ui.label("seed:");
-                ui.text_edit_singleline(&mut self.seed);
-                if ui.button("apply").clicked() {
-                    self.update_history();
-
-                    self.apply_seed();
-                    self.spawn();
-                }
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("total particle count:");
-
-                let total_particle_count: usize = self.particle_counts.iter().sum();
-                ui.code(total_particle_count.to_string());
-
-                ui.checkbox(&mut self.locked_particle_counts, "lock particle counts");
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("computation time:");
-                ui.code(self.computation_time.to_string() + "ms");
-            });
-
-            if self.history.len() > 1 {
-                ui.collapsing("seed history", |ui| {
-                    if ComboBox::from_id_source("seed history")
-                        .width(200.)
-                        .show_index(
-                            ui,
-                            &mut self.selected_history_entry,
-                            self.history.len(),
-                            |i| self.history[i].to_owned(),
-                        )
-                        .changed()
-                    {
-                        self.history[self.selected_history_entry].clone_into(&mut self.seed);
-                        self.apply_seed();
                         self.spawn();
-                    };
-                });
-            }
+                    }
 
-            ui.collapsing("particle inspector", |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("class:");
-                    ComboBox::from_id_source("class").show_index(
-                        ui,
-                        &mut self.selected_particle.0,
-                        self.classes.len(),
-                        |i| self.classes[i].heading.to_owned(),
-                    );
-                    ui.label("particle index:");
-                    ui.add(Slider::new(
-                        &mut self.selected_particle.1,
-                        0..=(self.particle_counts[self.selected_particle.0] - 1),
-                    ));
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label("position:");
-                    ui.code(format!(
-                        "{:?}",
-                        self.particle_positions[self.selected_particle]
-                    ));
-                });
-
-                ui.horizontal(|ui| {
-                    if self.follow_selected_particle {
-                        if ui.button("stop following selected particle").clicked() {
-                            self.view.pos -= self.particle_positions[self.selected_particle];
-                            self.follow_selected_particle = false;
+                    if self.simulation_state == SimulationState::Running {
+                        if ui
+                            .button("pause")
+                            .on_hover_text("pause the simulation")
+                            .clicked()
+                        {
+                            self.pause();
                         }
-                    } else if ui.button("focus and follow selected particle").clicked() {
-                        self.view.pos *= 0.;
-                        self.follow_selected_particle = true;
+                    } else if ui
+                        .button("play")
+                        .on_hover_text("start the simulation")
+                        .clicked()
+                    {
+                        self.play();
+                    }
+
+                    if ui
+                        .button("randomize")
+                        .on_hover_text("randomly pick a new seed")
+                        .clicked()
+                    {
+                        let w1 = rand::random::<usize>() % self.words.len();
+                        let w2 = rand::random::<usize>() % self.words.len();
+                        let w3 = rand::random::<usize>() % self.words.len();
+                        self.seed =
+                            format!("{}_{}_{}", self.words[w1], self.words[w2], self.words[w3]);
+
+                        self.update_history();
+
+                        self.apply_seed();
+                        self.send_power_matrix();
+                        self.send_particle_counts();
+                        self.spawn();
+                    }
+
+                    if ui
+                        .button("reset view")
+                        .on_hover_text("reset zoom and view position")
+                        .clicked()
+                    {
+                        self.view = View::DEFAULT;
+                    }
+
+                    if ui
+                        .button("reset")
+                        .on_hover_text("reset everything")
+                        .clicked()
+                    {
+                        self.reset();
+                    }
+
+                    if ui.button("hide ui").clicked() {
+                        self.show_ui = false;
+                    }
+
+                    if ui.button("quit").on_hover_text("exit smarticles").clicked() {
+                        self.senders.send_sim(SmarticlesEvent::Quit);
+                        if let Some(handle) = self.simulation_handle.take() {
+                            handle.join().unwrap();
+                        };
+                        ui.ctx()
+                            .send_viewport_cmd(eframe::egui::ViewportCommand::Close);
                     }
                 });
-            });
+                ui.horizontal(|ui| {
+                    ui.label("seed:");
+                    ui.text_edit_singleline(&mut self.seed);
+                    if ui.button("apply").clicked() {
+                        self.update_history();
 
-            ScrollArea::vertical().show(ui, |ui| {
-                for i in 0..CLASS_COUNT {
-                    ui.add_space(10.);
-                    ui.colored_label(self.classes[i].color, &self.classes[i].heading);
-                    ui.separator();
+                        self.apply_seed();
+                        self.send_power_matrix();
+                        self.send_particle_counts();
+                        self.spawn();
+                    }
+                });
 
-                    ui.horizontal(|ui| {
-                        ui.label("particle count:");
-                        if ui
-                            .add(Slider::new(
-                                &mut self.particle_counts[i],
-                                MIN_PARTICLE_COUNT..=MAX_PARTICLE_COUNT,
-                            ))
+                ui.horizontal(|ui| {
+                    ui.label("total particle count:");
+
+                    let total_particle_count: usize = self.particle_counts.iter().sum();
+                    ui.code(total_particle_count.to_string());
+
+                    ui.checkbox(&mut self.locked_particle_counts, "lock particle counts");
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("computation time:");
+                    if let Some(dt) = self.computation_time_graph.front() {
+                        ui.code(format!("{:.1}ms", dt));
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    Plot::new("computation time")
+                        .show_axes(false)
+                        .y_axis_label("computation time")
+                        .show_x(false)
+                        .height(60.)
+                        .allow_drag(false)
+                        .allow_zoom(false)
+                        .allow_boxed_zoom(false)
+                        .allow_scroll(false)
+                        .allow_double_click_reset(false)
+                        .label_formatter(|_, value| format!("{:.1}ms", value.y))
+                        .show(ui, |ui| {
+                            ui.line(Line::new(PlotPoints::from_iter(
+                                self.computation_time_graph
+                                    .iter()
+                                    .rev()
+                                    .enumerate()
+                                    .map(|(i, v)| [i as f64, *v as f64]),
+                            )));
+                        });
+                });
+
+                if self.history.len() > 1 {
+                    ui.collapsing("seed history", |ui| {
+                        if ComboBox::from_id_salt("seed history")
+                            .width(200.)
+                            .show_index(
+                                ui,
+                                &mut self.selected_history_entry,
+                                self.history.len(),
+                                |i| self.history[i].to_owned(),
+                            )
                             .changed()
                         {
+                            self.history[self.selected_history_entry].clone_into(&mut self.seed);
+                            self.apply_seed();
+                            self.send_power_matrix();
                             self.send_particle_counts();
                             self.spawn();
-                        }
-                    });
-
-                    ui.collapsing(self.classes[i].heading.to_owned() + " params", |ui| {
-                        ui.vertical(|ui| {
-                            for j in 0..CLASS_COUNT {
-                                ui.horizontal(|ui| {
-                                    ui.label("power of the force applied on");
-                                    let class_name = ui.colored_label(
-                                        self.classes[j].color,
-                                        &self.classes[j].name,
-                                    );
-                                    ui.add_space(5. - class_name.rect.width() / 2.);
-                                    ui.label(":");
-                                    ui.add_space(5. - class_name.rect.width() / 2.);
-                                    if ui
-                                        .add(Slider::new(
-                                            &mut self.power_matrix[(i, j)],
-                                            MIN_POWER..=MAX_POWER,
-                                        ))
-                                        .changed()
-                                    {
-                                        self.seed = self.export_custom_seed();
-                                        self.send_params();
-                                    }
-                                    if ui.button("reset").clicked() {
-                                        self.power_matrix[(i, j)] = 0;
-                                        self.send_params();
-                                    }
-                                });
-                            }
-                        });
+                        };
                     });
                 }
+
+                ui.collapsing("particle inspector", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("class:");
+                        ComboBox::from_id_salt("class").show_index(
+                            ui,
+                            &mut self.selected_particle.0,
+                            self.classes.len(),
+                            |i| self.classes[i].heading.to_owned(),
+                        );
+                        ui.label("particle index:");
+                        ui.add(Slider::new(
+                            &mut self.selected_particle.1,
+                            0..=(self.particle_counts[self.selected_particle.0] - 1),
+                        ));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("position:");
+                        ui.code(format!(
+                            "{:?}",
+                            self.particle_positions[self.selected_particle]
+                        ));
+                    });
+
+                    ui.horizontal(|ui| {
+                        if self.follow_selected_particle {
+                            if ui.button("stop following selected particle").clicked() {
+                                self.view.pos -= self.particle_positions[self.selected_particle];
+                                self.follow_selected_particle = false;
+                            }
+                        } else if ui.button("focus and follow selected particle").clicked() {
+                            self.view.pos *= 0.;
+                            self.follow_selected_particle = true;
+                        }
+                    });
+                });
+
+                ScrollArea::vertical().show(ui, |ui| {
+                    for i in 0..CLASS_COUNT {
+                        ui.add_space(10.);
+                        ui.horizontal(|ui| {
+                            ui.colored_label(self.classes[i].color, &self.classes[i].heading);
+
+                            if self.classes[i].enabled {
+                                if ui.button("disable").clicked() {
+                                    self.classes[i].enabled = false;
+                                    self.senders.send_sim(SmarticlesEvent::DisableClass(i));
+                                }
+                            } else if ui.button("enable").clicked() {
+                                self.classes[i].enabled = true;
+                                self.senders.send_sim(SmarticlesEvent::EnableClass(i));
+                            }
+                        });
+                        ui.separator();
+
+                        if self.classes[i].enabled {
+                            ui.horizontal(|ui| {
+                                ui.label("particle count:");
+                                if ui
+                                    .add(Slider::new(
+                                        &mut self.particle_counts[i],
+                                        MIN_PARTICLE_COUNT..=MAX_PARTICLE_COUNT,
+                                    ))
+                                    .changed()
+                                {
+                                    self.send_particle_counts();
+                                    self.spawn();
+                                }
+                            });
+
+                            ui.collapsing(self.classes[i].heading.to_owned() + " params", |ui| {
+                                ui.vertical(|ui| {
+                                    for j in 0..CLASS_COUNT {
+                                        if self.classes[j].enabled {
+                                            ui.horizontal(|ui| {
+                                                ui.label("power of the force applied on");
+                                                let class_name = ui.colored_label(
+                                                    self.classes[j].color,
+                                                    &self.classes[j].name,
+                                                );
+                                                ui.add_space(5. - class_name.rect.width() / 2.);
+                                                ui.label(":");
+                                                ui.add_space(5. - class_name.rect.width() / 2.);
+                                                if ui
+                                                    .add(Slider::new(
+                                                        &mut self.power_matrix[(i, j)],
+                                                        MIN_POWER..=MAX_POWER,
+                                                    ))
+                                                    .changed()
+                                                {
+                                                    self.seed = self.export_custom_seed();
+                                                    self.send_power_matrix();
+                                                }
+                                                if ui.button("reset").clicked() {
+                                                    self.power_matrix[(i, j)] = 0;
+                                                    self.send_power_matrix();
+                                                }
+                                            });
+                                        }
+                                    }
+                                });
+                            });
+                        }
+                    }
+                });
             });
-        });
+        } else {
+            Area::new("show_ui_button_area".into())
+                .anchor(Align2::LEFT_TOP, [10., 10.]) // Center the button
+                .show(ctx, |ui| {
+                    if ui.button("show ui").clicked() {
+                        self.show_ui = true;
+                    }
+                });
+        }
 
         CentralPanel::default()
             .frame(eframe::egui::Frame {
@@ -541,22 +612,6 @@ impl App for SmarticlesApp {
                     }
                 }
 
-                let pos = Vec2::new(resp.rect.right() - 30., resp.rect.bottom() - 10.);
-                paint.line_segment(
-                    [
-                        (pos - Vec2::new(10. * self.view.zoom, 0.)).to_pos2(),
-                        pos.to_pos2(),
-                    ],
-                    Stroke::new(4., Color32::WHITE),
-                );
-                paint.text(
-                    (pos + Vec2::new(10., 0.)).to_pos2(),
-                    Align2::LEFT_CENTER,
-                    "10",
-                    FontId::monospace(14.),
-                    Color32::WHITE,
-                );
-
                 #[cfg(feature = "cell_map_display")]
                 if let Some(cell_map) = &self.cell_map {
                     for c in cell_map {
@@ -574,15 +629,16 @@ impl App for SmarticlesApp {
                     }
                 }
 
-                for c in 0..CLASS_COUNT {
+                for c in (0..CLASS_COUNT).filter(|c| self.classes[*c].enabled) {
                     let class = &self.classes[c];
 
                     for p in 0..self.particle_counts[c] {
                         let pos =
                             (center + self.particle_positions[(c, p)] * self.view.zoom).to_pos2();
+
                         paint.circle_filled(
                             pos,
-                            if (c, p) == self.selected_particle {
+                            if (c, p) == self.selected_particle && self.classes[c].enabled {
                                 PARTICLE_DIAMETER * 3.
                             } else {
                                 PARTICLE_DIAMETER

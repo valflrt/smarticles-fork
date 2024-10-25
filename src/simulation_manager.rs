@@ -57,6 +57,14 @@ impl SimulationManager {
                 }
                 SmarticlesEvent::SimulationPause => self.simulation_state = SimulationState::Paused,
 
+                SmarticlesEvent::EnableClass(c) => {
+                    self.simulation.enabled_classes[c] = true;
+                    self.simulation.spawn();
+                }
+                SmarticlesEvent::DisableClass(c) => {
+                    self.simulation.enabled_classes[c] = false;
+                }
+
                 SmarticlesEvent::PowerMatrixChange(power_matrix) => {
                     self.simulation.power_matrix = power_matrix
                 }

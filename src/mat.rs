@@ -171,9 +171,9 @@ impl Display for Mat2D<f32> {
             for i in 0..self.num_rows {
                 for j in 0..self.num_columns {
                     let s = if self[(i, j)].is_sign_negative() {
-                        format!("{:.3}", self[(i, j)])
+                        format!("{:10.3}", self[(i, j)])
                     } else {
-                        format!("{:.4}", self[(i, j)])
+                        format!("{:10.4}", self[(i, j)])
                     };
 
                     write!(

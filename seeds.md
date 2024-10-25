@@ -110,3 +110,10 @@
   - `justs_klosh_kendoist`
 - Added after `v1.0.0`
   - `caprylyl_plumbed_triacids`
+
+# Experimentation
+
+- Added after `v1.1.0`
+  - `@2CgoAAAAKNgoAAAAKADYAAAA3wrxCxAR/B7y7fQHJiL87doG`
+  - `@7AAAAABQAOwAUAAAAADsAFAAAFAA7AAAAABQAOwAUAAAAADs`
+  - `@7Pv7+/so++z7KPv7+/vs+yj7+yj77Pv7+/so++z7KPv7+/vs`
