@@ -9,6 +9,8 @@ pub enum Event {
     Exit,
 
     SpawnParticles,
+    EnsableClass(usize),
+    DisableClass(usize),
 
     SimulationStart,
     SimulationPause,
@@ -29,6 +31,8 @@ impl Display for Event {
         match self {
             Event::Exit => write!(f, "Exit"),
             Event::SpawnParticles => write!(f, "SpawnParticles"),
+            Event::EnsableClass(i) => write!(f, "EnsableClass({i})"),
+            Event::DisableClass(i) => write!(f, "DisableClass({i})"),
             Event::SimulationStart => write!(f, "SimulationStart"),
             Event::SimulationPause => write!(f, "SimulationPause"),
             Event::SimulationReset => write!(f, "SimulationReset"),
@@ -113,7 +117,7 @@ impl Senders {
 #[derive(Debug, Clone)]
 pub struct StateUpdate {
     pub particle_positions: Option<Mat2D<Vec2>>,
-    pub computation_duration: Option<Duration>,
+    pub computation_time: Option<Duration>,
 
     pub power_matrix: Option<Mat2D<i8>>,
     pub particle_counts: Option<[usize; CLASS_COUNT]>,
@@ -128,7 +132,7 @@ impl StateUpdate {
     pub fn new() -> Self {
         StateUpdate {
             particle_positions: None,
-            computation_duration: None,
+            computation_time: None,
             power_matrix: None,
             particle_counts: None,
             training_generation: None,
@@ -143,7 +147,7 @@ impl StateUpdate {
         self
     }
     pub fn computation_duration(mut self, computation_duration: Duration) -> StateUpdate {
-        self.computation_duration = Some(computation_duration);
+        self.computation_time = Some(computation_duration);
         self
     }
     pub fn power_matrix(mut self, power_matrix: &Mat2D<i8>) -> StateUpdate {
@@ -179,7 +183,7 @@ impl Display for StateUpdate {
         if self.particle_positions.is_some() {
             fields.push("particle_positions");
         }
-        if self.computation_duration.is_some() {
+        if self.computation_time.is_some() {
             fields.push("computation_duration");
         }
         if self.power_matrix.is_some() {

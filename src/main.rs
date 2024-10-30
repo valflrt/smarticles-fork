@@ -29,17 +29,17 @@ use postcard::from_bytes;
 
 const CLASS_COUNT: usize = 4;
 
-/// Min particle count
+/// Min particle count.
 const MIN_PARTICLE_COUNT: usize = 0;
-/// Max particle count per class
-const MAX_PARTICLE_COUNT: usize = 20000;
+/// Maximal particle count per class.
+const MAX_PARTICLE_COUNT: usize = 15000;
 /// When randomizing particle counts, this is the lowest
 /// possible value, this prevent random particle counts from
-/// being under this value
+/// being under this value.
 const RANDOM_MIN_PARTICLE_COUNT: usize = 200;
 /// When randomizing particle counts, this is the highest
 /// possible value, this prevent random particle counts from
-/// being above this value
+/// being above this value.
 const RANDOM_MAX_PARTICLE_COUNT: usize = MAX_PARTICLE_COUNT;
 
 const MAX_POWER: i8 = 100;
@@ -118,7 +118,8 @@ fn main() {
                     .map(|(i, class_name)| {
                         let [r, g, b] = Hsva::new(
                             // tinkering to make purple appear first. I like purple.
-                            (((CLASS_COUNT - i - 1) % CLASS_COUNT) as f32) / (CLASS_COUNT as f32),
+                            0.2 + 0.8 * (((CLASS_COUNT - i - 1) % CLASS_COUNT) as f32)
+                                / (CLASS_COUNT as f32),
                             0.9,
                             0.9,
                             1.,

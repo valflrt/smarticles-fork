@@ -7,51 +7,34 @@ use rayon::prelude::*;
 
 use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 
-const DAMPING_FACTOR: f32 = 0.06;
-const FORCE_SCALING_FACTOR: f32 = 0.0008;
+pub const FIRST_THRESHOLD: f32 = 4.; // 10.
+pub const SECOND_THRESHOLD: f32 = 20.; // 12.
 
-pub const FIRST_THRESHOLD: f32 = 10.;
-pub const SECOND_THRESHOLD: f32 = 12.;
+pub const PROXIMITY_POWER: f32 = -200.; // -60.
 
-pub const INTERACTION_THRESHOLD: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD;
+const DAMPING_FACTOR: f32 = 0.06; // 0.06
+const FORCE_SCALING_FACTOR: f32 = 0.0004; // 0.0008
 
-pub const PROXIMITY_POWER: f32 = -60.;
+const SPAWN_DENSITY: f32 = 16.; // 12.
 
-const SPAWN_DENSITY: f32 = 12.;
-
-const DEFAULT_PARTICLE_COUNT: usize = 200;
-
-/// Calcul de la force (force centrale ne dépendant que du
-/// rayon)
 pub fn compute_force(radius: f32, power: f32) -> f32 {
     if radius < FIRST_THRESHOLD {
-        // 1er cas: zone de proximité: la particule repousse les
-        // particules trop proches
         (radius / FIRST_THRESHOLD - 1.) * PROXIMITY_POWER
     } else if radius < FIRST_THRESHOLD + SECOND_THRESHOLD {
-        // 2ème cas: zone "croissante": la force dépend de la distance
-        // entre les deux particules (et croît jusqu'à atteindre le
-        // 3ème cas)
         (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD) * power
-    } else if radius < INTERACTION_THRESHOLD {
-        // 3ème cas: zone "décroissante": la force dépend de la distance
-        // entre les deux particules (et décroît jusqu'à atteindre le
-        // 4ème cas)
+    } else if radius < FIRST_THRESHOLD + 2. * SECOND_THRESHOLD {
         (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * power
     } else {
-        // 4ème cas: au delà de cette limite, plus aucune force n'est
-        // appliquée
         0.
     }
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-struct Cell(i32, i32);
+pub struct Cell(pub i32, pub i32);
 
 impl Cell {
-    pub const CELL_SIZE: f32 = INTERACTION_THRESHOLD + 0.1;
+    pub const CELL_SIZE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD + 0.1;
 
-    /// Créé une cellule à partir d'une position
     pub fn from_position(position: Vec2) -> Self {
         Self(
             (position.x / Self::CELL_SIZE).floor() as i32,
@@ -59,7 +42,6 @@ impl Cell {
         )
     }
 
-    /// Récupère les cellules voisines
     #[inline]
     pub const fn get_neighbors(&self) -> [Cell; 9] {
         let Cell(x, y) = *self;
@@ -79,54 +61,49 @@ impl Cell {
 
 #[derive(Debug, Clone)]
 pub struct Simulation {
-    /// Nombre de particule pour chaque classe
+    pub enabled_classes: [bool; CLASS_COUNT],
     pub particle_counts: [usize; CLASS_COUNT],
-    /// Matrice contenant les forces de la classe i sur la classe
-    /// j
+    /// Matrix containing the power for each particle class with
+    /// respect to each other.
     pub power_matrix: Mat2D<i8>,
 
     pub particle_prev_positions: Mat2D<Vec2>,
     pub particle_positions: Mat2D<Vec2>,
 
-    /// HashMap associant à chaque cellule une liste d'identifiant
-    /// de particule (les particules dans la cellule)
-    cell_map: HashMap<Cell, Vec<(usize, usize)>>,
+    pub cell_map: HashMap<Cell, Vec<(usize, usize)>>,
 }
 
 impl Simulation {
-    /// Récupère les particules des cellules voisines
     fn get_neighboring_particles(&self, cell: Cell) -> Vec<(usize, usize)> {
-        // Itération sur les cellules voisines
         cell.get_neighbors()
             .iter()
-            // Récupère les particules associées à chaque cellule voisine
-            // dans la HashMap
             .filter_map(|neighbor| self.cell_map.get(neighbor))
             .flat_map(|particles| particles.iter().copied())
+            // only handle enabled classes
+            .filter(|(c, _)| self.enabled_classes[*c])
             .collect()
     }
 
-    /// Calcule les nouvelles positions des particules
-    fn compute_positions(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
-        // Itération sur l'ensemble des particules
+    fn compute_position_updates(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
         self.cell_map
             .par_iter()
-            .map(|(cell, particle_ids)| {
-                // Récupère les particules des cellules voisines
+            .map(|(cell, particles)| {
+                // Fetch the particles of neighboring cells
                 let neighboring_particules = self.get_neighboring_particles(*cell);
 
                 let mut new_positions: Vec<((usize, usize), (Vec2, Vec2))> = Vec::new();
 
-                for &(c1, p1) in particle_ids {
+                for &(c1, p1) in particles.iter().filter(|(c, _)| self.enabled_classes[*c]) {
                     let mut force = Vec2::ZERO;
 
                     let pos = self.particle_positions[(c1, p1)];
 
+                    // there are only particles from enabled classes in
+                    // `neighboring_particules` (see `get_neighboring_particles`)
                     for &(c2, p2) in &neighboring_particules {
-                        let power = self.power_matrix[(c1, c2)];
+                        let power = -self.power_matrix[(c1, c2)];
                         let other_pos = self.particle_positions[(c2, p2)];
 
-                        // Calcul de la distance (vectorielle) entre les deux particules
                         let distance = other_pos - pos;
                         force -= distance.normalized()
                             * compute_force(distance.length(), power as f32)
@@ -135,7 +112,7 @@ impl Simulation {
 
                     let prev_pos = self.particle_prev_positions[(c1, p1)];
 
-                    // ajout d'une force de frottement
+                    // add damping force
                     force += (prev_pos - pos) * DAMPING_FACTOR;
 
                     // Calcul de la nouvelle position à l'aide de l'integration
@@ -171,20 +148,18 @@ impl Simulation {
             )
     }
 
-    /// Déplace les particules
     pub fn move_particles(&mut self) {
-        self.organize_particles();
-
-        // Mise à jour des positions
-        self.compute_positions()
+        self.compute_position_updates()
             .iter()
             .for_each(|(index, (pos, new_pos))| {
                 self.particle_prev_positions[*index] = *pos;
                 self.particle_positions[*index] = *new_pos;
             });
+
+        self.organize_particles();
     }
 
-    /// Remise à 0 des particules
+    /// Sets all particle positions to zero.
     pub fn reset_particles_positions(&mut self) {
         for c in 0..CLASS_COUNT {
             for p in 0..self.particle_counts[c] {
@@ -192,30 +167,39 @@ impl Simulation {
                 self.particle_prev_positions[(c, p)] = Vec2::ZERO
             }
         }
+
+        self.organize_particles();
     }
 
-    /// Dispose les particules aléatoirement
     pub fn spawn(&mut self) {
         self.reset_particles_positions();
 
-        let spawn_radius = (self.particle_count() as f32 / PI).sqrt() * SPAWN_DENSITY;
+        let spawn_radius =
+            (self.particle_counts.iter().sum::<usize>() as f32 / PI).sqrt() * SPAWN_DENSITY;
 
-        for c in 0..CLASS_COUNT {
+        for c in (0..CLASS_COUNT).filter(|c| self.enabled_classes[*c]) {
             for p in 0..self.particle_counts[c] {
                 let angle = TAU * random::<f32>();
                 let distance = random::<f32>().sqrt() * spawn_radius;
 
-                let pos = Vec2::new(distance * angle.cos(), distance * angle.sin());
+                let pos = Vec2::new(
+                    distance * angle.cos()
+                        + (0.5 - random::<f32>()) * spawn_radius * SPAWN_DENSITY / 10.,
+                    distance * angle.sin()
+                        + (0.5 - random::<f32>()) * spawn_radius * SPAWN_DENSITY / 10.,
+                );
+
                 self.particle_positions[(c, p)] = pos;
                 self.particle_prev_positions[(c, p)] = pos;
             }
         }
+
+        self.organize_particles();
     }
 
-    /// Organise les particules: les particules sont mises dans
-    /// la cellule correspondante
     pub fn organize_particles(&mut self) {
-        // Supprime les cellules vides
+        // Remove empty cells from the hashmap and clear non-empty
+        // ones
         self.cell_map.retain(|_, particles| {
             if !particles.is_empty() {
                 particles.clear();
@@ -224,7 +208,7 @@ impl Simulation {
                 false
             }
         });
-        for c in 0..CLASS_COUNT {
+        for c in (0..CLASS_COUNT).filter(|c| self.enabled_classes[*c]) {
             for p in 0..self.particle_counts[c] {
                 let particle_index = (c, p);
                 let cell = Cell::from_position(self.particle_positions[particle_index]);
@@ -239,11 +223,11 @@ impl Simulation {
 }
 
 impl Default for Simulation {
-    /// Configuration initiale du struct Simulation
     fn default() -> Self {
         let particle_positions = Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT);
         let mut sim = Self {
-            particle_counts: [DEFAULT_PARTICLE_COUNT; CLASS_COUNT],
+            enabled_classes: [true; CLASS_COUNT],
+            particle_counts: [200; CLASS_COUNT],
             power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
 
             particle_prev_positions: particle_positions.to_owned(),
