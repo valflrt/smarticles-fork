@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::PI;
 
 use eframe::egui::Vec2;
 use rand::random;
@@ -15,7 +15,7 @@ pub const PROXIMITY_POWER: f32 = -200.; // -60.
 const DAMPING_FACTOR: f32 = 0.06; // 0.06
 const FORCE_SCALING_FACTOR: f32 = 0.0004; // 0.0008
 
-const SPAWN_DENSITY: f32 = 16.; // 12.
+const SPAWN_DENSITY: f32 = 0.032;
 
 pub fn compute_force(radius: f32, power: f32) -> f32 {
     if radius < FIRST_THRESHOLD {
@@ -159,19 +159,18 @@ impl Simulation {
         self.reset_particles_positions();
 
         let spawn_radius =
-            (self.particle_counts.iter().sum::<usize>() as f32 / PI).sqrt() * SPAWN_DENSITY;
+            (self.particle_counts.iter().sum::<usize>() as f32 / PI).sqrt() / SPAWN_DENSITY;
 
         for c in (0..CLASS_COUNT).filter(|c| self.enabled_classes[*c]) {
             for p in 0..self.particle_counts[c] {
-                let angle = TAU * random::<f32>();
-                let distance = random::<f32>().sqrt() * spawn_radius;
+                let mut pos =
+                    Vec2::new(0.5 - random::<f32>(), 0.5 - random::<f32>()) * spawn_radius;
 
-                let pos = Vec2::new(
-                    distance * angle.cos()
-                        + (0.5 - random::<f32>()) * spawn_radius * SPAWN_DENSITY / 10.,
-                    distance * angle.sin()
-                        + (0.5 - random::<f32>()) * spawn_radius * SPAWN_DENSITY / 10.,
-                );
+                for i in 2..=4 {
+                    pos = pos
+                        + Vec2::new(0.5 - random::<f32>(), 0.5 - random::<f32>()) * spawn_radius
+                            / i as f32
+                }
 
                 self.particle_positions[(c, p)] = pos;
                 self.particle_prev_positions[(c, p)] = pos;
@@ -184,7 +183,14 @@ impl Simulation {
     pub fn organize_particles(&mut self) {
         // Remove empty cells from the hashmap and clear non-empty
         // ones
-        self.cell_map.retain(|_, particles| {
+        let mut max = Cell(0, 0);
+        self.cell_map.retain(|cell, particles| {
+            if cell.0 > max.0 {
+                max.0 = cell.0
+            }
+            if cell.1 > max.1 {
+                max.1 = cell.1
+            }
             if !particles.is_empty() {
                 particles.clear();
                 true
@@ -192,6 +198,7 @@ impl Simulation {
                 false
             }
         });
+        println!("{:?}", max);
         for c in (0..CLASS_COUNT).filter(|c| self.enabled_classes[*c]) {
             for p in 0..self.particle_counts[c] {
                 let particle_index = (c, p);
@@ -213,7 +220,7 @@ impl Default for Simulation {
             particle_prev_positions: particle_positions.to_owned(),
             particle_positions,
 
-            cell_map: HashMap::new(),
+            cell_map: HashMap::with_capacity(57600),
         };
         sim.organize_particles();
         sim
