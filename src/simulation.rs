@@ -7,15 +7,15 @@ use rayon::prelude::*;
 
 use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 
-pub const FIRST_THRESHOLD: f32 = 10.; // 10.
+pub const FIRST_THRESHOLD: f32 = 4.; // 10.
 pub const SECOND_THRESHOLD: f32 = 20.; // 12.
 
-pub const PROXIMITY_POWER: f32 = -60.; // -60.
+pub const PROXIMITY_POWER: f32 = -200.; // -60.
 
-const DAMPING_FACTOR: f32 = 0.08; // 0.06
+const DAMPING_FACTOR: f32 = 0.06; // 0.06
 const FORCE_SCALING_FACTOR: f32 = 0.0004; // 0.0008
 
-const SPAWN_DENSITY: f32 = 12.;
+const SPAWN_DENSITY: f32 = 16.; // 12.
 
 pub fn compute_force(radius: f32, power: f32) -> f32 {
     if radius < FIRST_THRESHOLD {
@@ -167,8 +167,10 @@ impl Simulation {
                 let distance = random::<f32>().sqrt() * spawn_radius;
 
                 let pos = Vec2::new(
-                    distance * angle.cos() + (0.5 - random::<f32>()) * spawn_radius,
-                    distance * angle.sin() + (0.5 - random::<f32>()) * spawn_radius,
+                    distance * angle.cos()
+                        + (0.5 - random::<f32>()) * spawn_radius * SPAWN_DENSITY / 10.,
+                    distance * angle.sin()
+                        + (0.5 - random::<f32>()) * spawn_radius * SPAWN_DENSITY / 10.,
                 );
 
                 self.particle_positions[(c, p)] = pos;

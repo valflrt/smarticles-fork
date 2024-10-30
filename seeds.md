@@ -110,10 +110,11 @@
   - `justs_klosh_kendoist`
 - Added after `v1.0.0`
   - `caprylyl_plumbed_triacids`
+- Added after `v1.2.0`
+  - `symtab_freshed_chuckled`
+  - `queery_spating_rubellas`: this one has 4-class gliders
 
 # Experimentation
 
-- Added after `v1.1.0`
-  - `@2CgoAAAAKNgoAAAAKADYAAAA3wrxCxAR/B7y7fQHJiL87doG`
-  - `@7AAAAABQAOwAUAAAAADsAFAAAFAA7AAAAABQAOwAUAAAAADs`
-  - `@7Pv7+/so++z7KPv7+/vs+yj7+yj77Pv7+/so++z7KPv7+/vs`
+- Added after `v1.2.0`
+  - `@4vb29vYo9uL2KPb29vbi9ij29ij24vb29vYo9uL2KPb29vbi`

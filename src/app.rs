@@ -35,7 +35,7 @@ use {
 const PARTICLE_DIAMETER: f32 = 0.6;
 
 const DEFAULT_ZOOM: f32 = 2.;
-const MIN_ZOOM: f32 = 0.1;
+const MIN_ZOOM: f32 = 0.5;
 const MAX_ZOOM: f32 = 30.;
 const ZOOM_FACTOR: f32 = 1.05;
 
@@ -564,7 +564,7 @@ impl App for SmarticlesApp {
 
         CentralPanel::default()
             .frame(eframe::egui::Frame {
-                fill: Color32::from_rgba_unmultiplied(10, 10, 10, 255),
+                fill: Color32::from_rgba_unmultiplied(12, 10, 10, 255),
                 ..Default::default()
             })
             .show(ctx, |ui| {
@@ -624,7 +624,7 @@ impl App for SmarticlesApp {
                         paint.rect_stroke(
                             Rect::from_min_size(pos, Vec2::splat(Cell::CELL_SIZE) * self.view.zoom),
                             Rounding::ZERO,
-                            Stroke::new(1., Color32::DARK_GRAY),
+                            Stroke::new(1., Color32::from_rgba_unmultiplied(20, 20, 20, 255)),
                         );
                     }
                 }
