@@ -183,22 +183,14 @@ impl Simulation {
     pub fn organize_particles(&mut self) {
         // Remove empty cells from the hashmap and clear non-empty
         // ones
-        let mut max = Cell(0, 0);
-        self.cell_map.retain(|cell, particles| {
-            if cell.0 > max.0 {
-                max.0 = cell.0
-            }
-            if cell.1 > max.1 {
-                max.1 = cell.1
-            }
+        self.cell_map.retain(|_, particles| {
             if !particles.is_empty() {
-                particles.clear();
+                particles.clear(); // Clear retained cells
                 true
             } else {
                 false
             }
         });
-        println!("{:?}", max);
         for c in (0..CLASS_COUNT).filter(|c| self.enabled_classes[*c]) {
             for p in 0..self.particle_counts[c] {
                 let particle_index = (c, p);
