@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{simulation::Simulation, Senders, SmarticlesEvent, CLASS_COUNT};
+use crate::{simulation::Simulation, Senders, SmarticlesEvent};
 
 /// Min update interval in ms (when the simulation is running).
 const UPDATE_INTERVAL: Duration = Duration::from_millis(30);
@@ -70,17 +70,6 @@ impl SimulationManager {
                 }
                 SmarticlesEvent::ParticleCountsUpdate(particle_counts) => {
                     self.simulation.particle_counts = particle_counts
-                }
-
-                SmarticlesEvent::SimulationReset => {
-                    self.simulation_state = SimulationState::Paused;
-                    self.simulation.particle_counts = [0; CLASS_COUNT];
-                    self.simulation.reset_particles_positions();
-                    self.simulation
-                        .power_matrix
-                        .vec_mut()
-                        .iter_mut()
-                        .for_each(|p| *p = 0);
                 }
 
                 _ => {}

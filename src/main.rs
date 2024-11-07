@@ -38,14 +38,8 @@ const CLASS_COUNT: usize = 6;
 const MIN_PARTICLE_COUNT: usize = 0;
 /// Maximal particle count per class.
 const MAX_PARTICLE_COUNT: usize = 15000;
-/// When randomizing particle counts, this is the lowest
-/// possible value, this prevent random particle counts from
-/// being under this value.
-const RANDOM_MIN_PARTICLE_COUNT: usize = 200;
-/// When randomizing particle counts, this is the highest
-/// possible value, this prevent random particle counts from
-/// being above this value.
-const RANDOM_MAX_PARTICLE_COUNT: usize = MAX_PARTICLE_COUNT;
+/// Default particle count per class.
+const DEFAULT_PARTICLE_COUNT: usize = 10000;
 
 const MAX_POWER: i8 = 100;
 const MIN_POWER: i8 = -MAX_POWER;
@@ -152,5 +146,4 @@ enum SmarticlesEvent {
 
     SimulationStart,
     SimulationPause,
-    SimulationReset,
 }

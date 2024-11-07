@@ -9,6 +9,7 @@ base64 = "0.13.0"
 byteorder = "1.4.3"
 eframe = "0.29.0"
 egui_plot = "0.29.0"
+fnv = "1.0.7"
 rand = { version = "0.8.5", features = ["small_rng"] }
 rayon = "1.9.0"
 

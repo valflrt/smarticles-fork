@@ -20,8 +20,7 @@ use rayon::prelude::*;
 
 use crate::{
     mat::Mat2D, simulation_manager::SimulationState, Senders, SmarticlesEvent, CLASS_COUNT,
-    MAX_PARTICLE_COUNT, MAX_POWER, MIN_PARTICLE_COUNT, MIN_POWER, RANDOM_MAX_PARTICLE_COUNT,
-    RANDOM_MIN_PARTICLE_COUNT,
+    DEFAULT_PARTICLE_COUNT, MAX_PARTICLE_COUNT, MAX_POWER, MIN_PARTICLE_COUNT, MIN_POWER,
 };
 
 #[cfg(feature = "cell_map_display")]
@@ -85,7 +84,6 @@ pub struct SmarticlesApp {
     computation_time_graph: VecDeque<f32>,
 
     particle_counts: [usize; CLASS_COUNT],
-    locked_particle_counts: bool,
     particle_positions: Mat2D<Vec2>,
     power_matrix: Mat2D<i8>,
     simulation_state: SimulationState,
@@ -127,7 +125,7 @@ impl SmarticlesApp {
             })
             .collect();
 
-        Self {
+        let mut app = Self {
             seed: "".to_string(),
 
             classes: classes.map(|(name, color)| ClassProps {
@@ -149,8 +147,7 @@ impl SmarticlesApp {
 
             computation_time_graph: VecDeque::new(),
 
-            particle_counts: [0; CLASS_COUNT],
-            locked_particle_counts: false,
+            particle_counts: [DEFAULT_PARTICLE_COUNT; CLASS_COUNT],
             particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
             power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
             simulation_state: SimulationState::Paused,
@@ -164,7 +161,19 @@ impl SmarticlesApp {
             simulation_handle,
 
             words,
-        }
+        };
+
+        let w1 = rand::random::<usize>() % app.words.len();
+        let w2 = rand::random::<usize>() % app.words.len();
+        let w3 = rand::random::<usize>() % app.words.len();
+        app.seed = format!("{}_{}_{}", app.words[w1], app.words[w2], app.words[w3]);
+
+        app.apply_seed();
+        app.send_power_matrix();
+        app.send_particle_counts();
+        app.spawn();
+
+        app
     }
 
     fn apply_seed(&mut self) {
@@ -187,12 +196,6 @@ impl SmarticlesApp {
         const POW_F: f32 = 1.25;
 
         for i in 0..CLASS_COUNT {
-            if !self.locked_particle_counts {
-                self.particle_counts[i] = rand(
-                    RANDOM_MIN_PARTICLE_COUNT as f32,
-                    RANDOM_MAX_PARTICLE_COUNT as f32,
-                ) as usize;
-            }
             for j in 0..CLASS_COUNT {
                 let pow = rand(MIN_POWER as f32, MAX_POWER as f32);
                 self.power_matrix[(i, j)] = (pow.signum() * pow.abs().powf(1. / POW_F)) as i8;
@@ -253,14 +256,16 @@ impl SmarticlesApp {
     }
     fn reset(&mut self) {
         self.simulation_state = SimulationState::Paused;
-        self.locked_particle_counts = false;
-        self.particle_counts = [0; CLASS_COUNT];
+        self.senders.send_sim(SmarticlesEvent::SimulationPause);
+        self.particle_counts = [DEFAULT_PARTICLE_COUNT; CLASS_COUNT];
         for i in 0..CLASS_COUNT {
             for j in 0..CLASS_COUNT {
                 self.power_matrix[(i, j)] = 0;
             }
         }
-        self.senders.send_sim(SmarticlesEvent::SimulationReset);
+        self.send_power_matrix();
+        self.send_particle_counts();
+        self.spawn();
     }
     fn spawn(&mut self) {
         self.senders.send_sim(SmarticlesEvent::SpawnParticles);
@@ -340,13 +345,12 @@ impl App for SmarticlesApp {
 
                         self.apply_seed();
                         self.send_power_matrix();
-                        self.send_particle_counts();
                         self.spawn();
                     }
 
                     if ui
                         .button("reset view")
-                        .on_hover_text("reset zoom and view position")
+                        .on_hover_text("reset zoom and position")
                         .clicked()
                     {
                         self.view = View::DEFAULT;
@@ -354,7 +358,7 @@ impl App for SmarticlesApp {
 
                     if ui
                         .button("reset")
-                        .on_hover_text("reset everything")
+                        .on_hover_text("reset particle counts and params")
                         .clicked()
                     {
                         self.reset();
@@ -381,7 +385,6 @@ impl App for SmarticlesApp {
 
                         self.apply_seed();
                         self.send_power_matrix();
-                        self.send_particle_counts();
                         self.spawn();
                     }
                 });
@@ -391,16 +394,23 @@ impl App for SmarticlesApp {
 
                     let total_particle_count: usize = self.particle_counts.iter().sum();
                     ui.code(total_particle_count.to_string());
-
-                    ui.checkbox(&mut self.locked_particle_counts, "lock particle counts");
                 });
 
-                ui.horizontal(|ui| {
-                    ui.label("computation time:");
-                    if let Some(dt) = self.computation_time_graph.front() {
+                if let Some(dt) = self.computation_time_graph.front() {
+                    ui.horizontal(|ui| {
+                        ui.label("computation time:");
                         ui.code(format!("{:.1}ms", dt));
-                    }
-                });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("average over last 200 computations:");
+                        ui.code(format!(
+                            "{:.1}ms",
+                            self.computation_time_graph.iter().sum::<f32>()
+                                / self.computation_time_graph.len() as f32
+                        ));
+                    });
+                }
 
                 ui.horizontal(|ui| {
                     Plot::new("computation time")
@@ -440,7 +450,6 @@ impl App for SmarticlesApp {
                             self.history[self.selected_history_entry].clone_into(&mut self.seed);
                             self.apply_seed();
                             self.send_power_matrix();
-                            self.send_particle_counts();
                             self.spawn();
                         };
                     });
@@ -511,6 +520,11 @@ impl App for SmarticlesApp {
                                     ))
                                     .changed()
                                 {
+                                    self.send_particle_counts();
+                                    self.spawn();
+                                }
+                                if ui.button("reset").clicked() {
+                                    self.particle_counts[i] = DEFAULT_PARTICLE_COUNT;
                                     self.send_particle_counts();
                                     self.spawn();
                                 }

@@ -113,6 +113,10 @@
 - Added after `v1.2.0`
   - `symtab_freshed_chuckled`
   - `queery_spating_rubellas`: this one has 4-class gliders
+  - `zendos_acoasma_rubbisy`
+  - `fiaunt_reprises_seahorse`
+  - `debuting_bonetta_healths`
+  - `reselect_striolae_dwindle`
 
 # Experimentation
 
