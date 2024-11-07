@@ -112,9 +112,8 @@ impl Simulation {
                     Vec2::new(0.5 - random::<f32>(), 0.5 - random::<f32>()) * spawn_radius;
 
                 for i in 2..=4 {
-                    pos = pos
-                        + Vec2::new(0.5 - random::<f32>(), 0.5 - random::<f32>()) * spawn_radius
-                            / i as f32
+                    pos += Vec2::new(0.5 - random::<f32>(), 0.5 - random::<f32>()) * spawn_radius
+                        / i as f32
                 }
 
                 self.particle_positions[(c, p)] = pos;
@@ -163,20 +162,17 @@ impl Simulation {
 
                 new_positions
             })
-            .reduce(
-                || Vec::new(),
-                |mut acc, v| {
-                    acc.extend(v);
-                    acc
-                },
-            )
+            .reduce(Vec::new, |mut acc, v| {
+                acc.extend(v);
+                acc
+            })
     }
 
     fn get_neighboring_particles(&self, cell: Cell) -> Vec<(usize, usize)> {
         cell.get_neighbors()
             .iter()
             // get non-empty cells
-            .filter_map(|neighbor| self.cell_map.get(&neighbor))
+            .filter_map(|neighbor| self.cell_map.get(neighbor))
             .flat_map(|particles| particles.iter().copied())
             // keep particles from enabled classes only
             .filter(|&(c, _)| self.enabled_classes[c])

@@ -235,7 +235,7 @@ impl SmarticlesApp {
         if self
             .history
             .front()
-            .and_then(|front| Some(&self.seed != front))
+            .map(|front| &self.seed != front)
             .unwrap_or(true)
         {
             self.history.push_front(self.seed.to_owned());
