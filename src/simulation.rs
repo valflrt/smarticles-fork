@@ -194,7 +194,11 @@ impl Default for Simulation {
             particle_prev_positions: particle_positions.to_owned(),
             particle_positions,
 
-            cell_map: FnvHashMap::with_capacity(57600),
+            cell_map: FnvHashMap::with_capacity(
+                (1.2 * ((CLASS_COUNT * MAX_PARTICLE_COUNT) as f32).sqrt()
+                    / (SPAWN_DENSITY * Cell::CELL_SIZE))
+                    .powi(2) as usize, // more or less the maximum possible initial number of cells
+            ),
         };
         sim.spawn();
         sim
