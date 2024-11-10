@@ -7,15 +7,15 @@ use rayon::prelude::*;
 
 use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 
-pub const PROXIMITY_POWER: f32 = -200.; // -60.
+pub const PROXIMITY_POWER: f32 = -160.;
 
-const DAMPING_FACTOR: f32 = 0.06; // 0.06
-const FORCE_SCALING_FACTOR: f32 = 0.0004; // 0.0008
+const DAMPING_FACTOR: f32 = 100.;
+const FORCE_SCALING_FACTOR: f32 = 0.0004;
 
 const SPAWN_DENSITY: f32 = 0.035;
 
-pub const FIRST_THRESHOLD: f32 = 6.; // 10.
-pub const SECOND_THRESHOLD: f32 = 20.; // 12.
+pub const FIRST_THRESHOLD: f32 = 4.;
+pub const SECOND_THRESHOLD: f32 = 20.;
 /// Range in which particles interact. If two particles are
 /// farther away than this distance, the will never interact.
 const INTERACTION_RANGE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD;
@@ -36,7 +36,7 @@ pub fn compute_force(radius: f32, power: f32) -> f32 {
 pub struct Cell(pub i32, pub i32);
 
 impl Cell {
-    pub const CELL_SIZE: f32 = INTERACTION_RANGE + 0.001;
+    pub const CELL_SIZE: f32 = INTERACTION_RANGE / 3.;
 
     pub fn from_position(position: Vec2) -> Self {
         Self(
@@ -45,35 +45,17 @@ impl Cell {
         )
     }
 
-    #[inline]
-    pub const fn get_neighbors(&self) -> [Cell; 9] {
+    pub fn get_neighbors(&self) -> impl Iterator<Item = Cell> {
+        // Note: The value of R must always be greater than
+        // `ceil(INTERACTION_RANGE / Cell::CELL_SIZE)`
+        const R: i32 = (INTERACTION_RANGE / Cell::CELL_SIZE) as i32;
+
         let Cell(x, y) = *self;
-        [
-            Cell(x - 1, y - 1),
-            Cell(x - 1, y),
-            Cell(x - 1, y + 1),
-            Cell(x, y - 1),
-            Cell(x, y),
-            Cell(x, y + 1),
-            Cell(x + 1, y - 1),
-            Cell(x + 1, y),
-            Cell(x + 1, y + 1),
-        ]
+
+        (-R..=R)
+            .flat_map(move |i| (-R..=R).map(move |j| (i, j)))
+            .map(move |(i, j)| Cell(x + i, y + j))
     }
-
-    // pub fn get_neighbors(&self) -> impl Iterator<Item = Cell> {
-    //     // Note: The value of R must always be greater than
-    //     // `ceil(INTERACTION_RANGE / Cell::CELL_SIZE)`
-    //     const R: i32 = (INTERACTION_RANGE / Cell::CELL_SIZE + 0.1) as i32;
-    //     const R_SQUARED: i32 = R * R;
-
-    //     let Cell(x, y) = *self;
-
-    //     (-R..=R)
-    //         .flat_map(move |i| (-R..=R).map(move |j| (i, j)))
-    //         .filter(move |(i, j)| i * i + j * j < R_SQUARED)
-    //         .map(move |(i, j)| Cell(x + i, y + j))
-    // }
 }
 
 #[derive(Debug, Clone)]
@@ -127,9 +109,9 @@ impl Simulation {
     fn compute_position_updates(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
         self.cell_map
             .par_iter()
-            .map(|(cell, particles)| {
+            .map(|(&cell, particles)| {
                 // Fetch the particles of neighboring cells
-                let neighboring_particles = self.get_neighboring_particles(*cell);
+                let neighboring_particles = self.get_neighboring_particles(cell);
 
                 let mut new_positions: Vec<((usize, usize), (Vec2, Vec2))> = Vec::new();
 
@@ -152,7 +134,8 @@ impl Simulation {
                     let prev_pos = self.particle_prev_positions[(c1, p1)];
 
                     // scale calculated force and add damping
-                    force = force * FORCE_SCALING_FACTOR + (prev_pos - pos) * DAMPING_FACTOR;
+                    force += (prev_pos - pos) * DAMPING_FACTOR;
+                    force *= FORCE_SCALING_FACTOR;
 
                     // Verlet integration
                     let new_pos = 2. * pos - prev_pos + force;
@@ -170,9 +153,9 @@ impl Simulation {
 
     fn get_neighboring_particles(&self, cell: Cell) -> Vec<(usize, usize)> {
         cell.get_neighbors()
-            .iter()
+            // .iter()
             // get non-empty cells
-            .filter_map(|neighbor| self.cell_map.get(neighbor))
+            .filter_map(|neighbor| self.cell_map.get(&neighbor))
             .flat_map(|particles| particles.iter().copied())
             // keep particles from enabled classes only
             .filter(|&(c, _)| self.enabled_classes[c])
