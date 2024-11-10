@@ -8,7 +8,7 @@ This is a Rust port of [Brainxyz's Artificial Life](https://www.youtube.com/watc
 
 It was originally created by [ChevyRay](https://github.com/ChevyRay) and improved by valflrt. Here is a preview of what the app does:
 
-https://github.com/user-attachments/assets/42a7374d-1c5f-4fdf-b43e-8d810fbe6f5f
+https://github.com/user-attachments/assets/26b3be2e-b9ab-4b1f-b0f3-838d1722f2d9
 
 ## Roadmap
 
@@ -51,7 +51,7 @@ Those enable you to change the `power` is the particle's attraction to particles
 
 You can adjust these parameters while the simulation is running if you want to see the effect they have:
 
-https://github.com/user-attachments/assets/88862e6c-dbe4-48d0-9b0a-50b5b5847710
+https://github.com/user-attachments/assets/75868540-8060-4c81-9e51-872ae3ef61af
 
 ## Sharing Simulations
 
