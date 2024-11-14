@@ -133,7 +133,6 @@ impl SimulationManager {
                 Event::SimulationReset => {
                     self.simulation_state = SimulationState::Paused;
                     self.simulation.particle_counts = [0; CLASS_COUNT];
-                    self.simulation.reset_particles_positions();
                 }
 
                 Event::Exit => return false,

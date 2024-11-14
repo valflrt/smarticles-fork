@@ -50,7 +50,7 @@ pub fn setup_simulation_for_networks(sim: &mut Simulation) {
 
     sim.power_matrix.vec_mut().iter_mut().for_each(|p| *p = 0);
 
-    sim.reset_particles_positions();
+    // sim.reset_particles_positions();
 }
 
 pub fn spawn_particules(target_angle: f32, sim: &mut Simulation) {

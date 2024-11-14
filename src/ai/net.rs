@@ -69,7 +69,7 @@ impl Network {
     /// Calcule le réseau dont les poids et les biais sont la
     /// moyenne des poids et des biais deux ce réseau et d'un
     /// autre
-    pub fn average(self, other: Self) -> Self {
+    pub fn _average(self, other: Self) -> Self {
         let mut out = self.to_owned();
         for i in 0..self.layers.len() {
             out.layers[i].weights =
