@@ -22,11 +22,11 @@ const INTERACTION_RANGE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD;
 
 pub fn compute_force(radius: f32, power: f32) -> f32 {
     if radius < FIRST_THRESHOLD {
-        (radius / FIRST_THRESHOLD - 1.) * PROXIMITY_POWER
+        -(radius / FIRST_THRESHOLD - 1.) * PROXIMITY_POWER
     } else if radius < FIRST_THRESHOLD + SECOND_THRESHOLD {
-        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD) * power
+        (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD) * power
     } else if radius < FIRST_THRESHOLD + 2. * SECOND_THRESHOLD {
-        (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * power
+        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * power
     } else {
         0.
     }
@@ -60,7 +60,6 @@ impl Cell {
 
 #[derive(Debug, Clone)]
 pub struct Simulation {
-    pub enabled_classes: [bool; CLASS_COUNT],
     pub particle_counts: [usize; CLASS_COUNT],
     /// Matrix containing the power for each particle class with
     /// respect to each other.
@@ -73,6 +72,7 @@ pub struct Simulation {
 }
 
 impl Simulation {
+    /// Take one time step in the simulation
     pub fn move_particles(&mut self) {
         self.compute_position_updates()
             .iter()
@@ -87,7 +87,7 @@ impl Simulation {
     pub fn spawn(&mut self) {
         let spawn_radius = (self.particle_count() as f32 / PI).sqrt() / SPAWN_DENSITY;
 
-        for c in (0..CLASS_COUNT).filter(|c| self.enabled_classes[*c]) {
+        for c in 0..CLASS_COUNT {
             for p in 0..self.particle_counts[c] {
                 let mut pos =
                     Vec2::new(0.5 - random::<f32>(), 0.5 - random::<f32>()) * spawn_radius;
@@ -106,45 +106,42 @@ impl Simulation {
     }
 
     pub fn particle_count(&self) -> usize {
-        self.particle_counts
-            .iter()
-            .enumerate()
-            .filter_map(|(i, n)| self.enabled_classes[i].then_some(n))
-            .sum::<usize>()
+        self.particle_counts.iter().sum::<usize>()
     }
 
     fn compute_position_updates(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
         self.cell_map
             .par_iter()
             .map(|(&cell, particles)| {
-                // Fetch the particles of neighboring cells
+                // Obtention des particules de cellules voisines
                 let neighboring_particles = self.get_neighboring_particles(cell);
 
                 let mut new_positions: Vec<((usize, usize), (Vec2, Vec2))> = Vec::new();
 
-                for &(c1, p1) in particles.iter().filter(|(c, _)| self.enabled_classes[*c]) {
+                for &(c1, p1) in particles.iter() {
                     let mut force = Vec2::ZERO;
 
                     let pos = self.particle_positions[(c1, p1)];
 
-                    // there are only particles from enabled classes in
-                    // `neighboring_particules` (see `get_neighboring_particles`)
                     for &(c2, p2) in &neighboring_particles {
-                        let power = -self.power_matrix[(c2, c1)]; // power of the force applied by c2 on c1
+                        // Coefficient de la force appliquée par les particules de
+                        // la classe 2 sur celles de la classe 1
+                        let power = -self.power_matrix[(c2, c1)];
                         let other_pos = self.particle_positions[(c2, p2)];
 
                         let distance = other_pos - pos;
-                        force -=
+                        // Force appliquée par la particule 2 sur la particule 1
+                        force +=
                             distance.normalized() * compute_force(distance.length(), power as f32);
                     }
 
                     let prev_pos = self.particle_prev_positions[(c1, p1)];
 
-                    // scale calculated force and add damping
+                    // Ajout d'une force de frottement
                     force += (prev_pos - pos) * DAMPING_FACTOR;
                     force *= FORCE_SCALING_FACTOR;
 
-                    // Verlet integration
+                    // Algorithme de Verlet
                     let new_pos = 2. * pos - prev_pos + force;
 
                     new_positions.push(((c1, p1), (pos, new_pos)));
@@ -165,7 +162,6 @@ impl Simulation {
             .filter_map(|neighbor| self.cell_map.get(&neighbor))
             .flat_map(|particles| particles.iter().copied())
             // keep particles from enabled classes only
-            .filter(|&(c, _)| self.enabled_classes[c])
             .collect()
     }
 
@@ -180,7 +176,7 @@ impl Simulation {
                 false
             }
         });
-        for c in (0..CLASS_COUNT).filter(|c| self.enabled_classes[*c]) {
+        for c in 0..CLASS_COUNT {
             for p in 0..self.particle_counts[c] {
                 let particle_index = (c, p);
                 let cell = Cell::from_position(self.particle_positions[particle_index]);
@@ -194,7 +190,6 @@ impl Default for Simulation {
     fn default() -> Self {
         let particle_positions = Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT);
         let mut sim = Self {
-            enabled_classes: [true; CLASS_COUNT],
             particle_counts: [0; CLASS_COUNT],
             power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
 

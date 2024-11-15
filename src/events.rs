@@ -9,12 +9,9 @@ pub enum Event {
     Exit,
 
     SpawnParticles,
-    EnsableClass(usize),
-    DisableClass(usize),
 
     SimulationStart,
     SimulationPause,
-    SimulationReset,
 
     NetworkStart,
     NetworkStop,
@@ -31,11 +28,8 @@ impl Display for Event {
         match self {
             Event::Exit => write!(f, "Exit"),
             Event::SpawnParticles => write!(f, "SpawnParticles"),
-            Event::EnsableClass(i) => write!(f, "EnsableClass({i})"),
-            Event::DisableClass(i) => write!(f, "DisableClass({i})"),
             Event::SimulationStart => write!(f, "SimulationStart"),
             Event::SimulationPause => write!(f, "SimulationPause"),
-            Event::SimulationReset => write!(f, "SimulationReset"),
             Event::NetworkStart => write!(f, "NetworkStart"),
             Event::NetworkStop => write!(f, "NetworkStop"),
             Event::StartTraining(_) => write!(f, "StartTraining"),
@@ -154,7 +148,7 @@ impl StateUpdate {
         self.power_matrix = Some(power_matrix.clone());
         self
     }
-    pub fn particle_counts(mut self, particle_counts: &[usize; 4]) -> StateUpdate {
+    pub fn particle_counts(mut self, particle_counts: &[usize; CLASS_COUNT]) -> StateUpdate {
         self.particle_counts = Some(particle_counts.clone());
         self
     }

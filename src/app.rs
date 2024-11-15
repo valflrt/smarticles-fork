@@ -28,8 +28,8 @@ use crate::{
     ai::{net::Network, training::random_target_angle},
     events::{Recipient, StateUpdate},
     mat::Mat2D,
-    Event, Senders, CLASS_COUNT, MAX_PARTICLE_COUNT, MAX_POWER, MIN_PARTICLE_COUNT, MIN_POWER,
-    RANDOM_MAX_PARTICLE_COUNT, RANDOM_MIN_PARTICLE_COUNT,
+    Event, Senders, CLASS_COUNT, DEFAULT_PARTICLE_COUNT, MAX_PARTICLE_COUNT, MAX_POWER,
+    MIN_PARTICLE_COUNT, MIN_POWER,
 };
 
 /// Display diameter of the particles in the simulation (in
@@ -81,7 +81,6 @@ struct ClassProps {
     name: String,
     heading: String,
     color: Color32,
-    enabled: bool,
 }
 
 pub struct SmarticlesApp {
@@ -102,7 +101,6 @@ pub struct SmarticlesApp {
     computation_time_graph: VecDeque<f32>,
 
     particle_counts: [usize; CLASS_COUNT],
-    locked_particle_counts: bool,
     particle_positions: Mat2D<Vec2>,
     power_matrix: Mat2D<i8>,
     simulation_state: SimulationState,
@@ -157,14 +155,13 @@ impl SmarticlesApp {
             Event::StateUpdate(StateUpdate::new().target_angle(target_angle)),
         );
 
-        Self {
+        let mut app = Self {
             seed: "".to_string(),
 
             classes: classes.map(|(name, color)| ClassProps {
                 name: name.to_string(),
                 heading: "class ".to_string() + &name.to_string(),
                 color,
-                enabled: true,
             }),
 
             show_ui: true,
@@ -179,8 +176,7 @@ impl SmarticlesApp {
 
             computation_time_graph: VecDeque::new(),
 
-            particle_counts: [0; CLASS_COUNT],
-            locked_particle_counts: false,
+            particle_counts: [DEFAULT_PARTICLE_COUNT; CLASS_COUNT],
             particle_positions: Mat2D::filled_with(Vec2::ZERO, CLASS_COUNT, MAX_PARTICLE_COUNT),
             power_matrix: Mat2D::filled_with(0, CLASS_COUNT, CLASS_COUNT),
             simulation_state: SimulationState::Paused,
@@ -199,7 +195,25 @@ impl SmarticlesApp {
             training_handle,
 
             words,
-        }
+        };
+
+        let w1 = rand::random::<usize>() % app.words.len();
+        let w2 = rand::random::<usize>() % app.words.len();
+        let w3 = rand::random::<usize>() % app.words.len();
+        app.seed = format!("{}_{}_{}", app.words[w1], app.words[w2], app.words[w3]);
+
+        app.apply_seed();
+        app.senders.send(
+            Recipient::Sim,
+            Event::StateUpdate(
+                StateUpdate::new()
+                    .power_matrix(&app.power_matrix)
+                    .particle_counts(&app.particle_counts),
+            ),
+        );
+        app.senders.send(Recipient::Sim, Event::SpawnParticles);
+
+        app
     }
 
     fn apply_seed(&mut self) {
@@ -221,12 +235,6 @@ impl SmarticlesApp {
         const POW_F: f32 = 1.25;
 
         for i in 0..CLASS_COUNT {
-            if !self.locked_particle_counts {
-                self.particle_counts[i] = rand(
-                    RANDOM_MIN_PARTICLE_COUNT as f32,
-                    RANDOM_MAX_PARTICLE_COUNT as f32,
-                ) as usize;
-            }
             for j in 0..CLASS_COUNT {
                 let pow = rand(MIN_POWER as f32, MAX_POWER as f32);
                 self.power_matrix[(i, j)] = (pow.signum() * pow.abs().powf(1. / POW_F)) as i8;
@@ -254,7 +262,7 @@ impl SmarticlesApp {
         if self
             .history
             .front()
-            .and_then(|front| Some(&self.seed != front))
+            .map(|front| &self.seed != front)
             .unwrap_or(true)
         {
             self.history.push_front(self.seed.to_owned());
@@ -275,14 +283,22 @@ impl SmarticlesApp {
     }
     fn reset(&mut self) {
         self.simulation_state = SimulationState::Paused;
-        self.locked_particle_counts = false;
-        self.particle_counts = [0; CLASS_COUNT];
+        self.senders.send(Recipient::Sim, Event::SimulationPause);
+        self.particle_counts = [DEFAULT_PARTICLE_COUNT; CLASS_COUNT];
         for i in 0..CLASS_COUNT {
             for j in 0..CLASS_COUNT {
                 self.power_matrix[(i, j)] = 0;
             }
         }
-        self.senders.send(Recipient::Sim, Event::SimulationReset);
+        self.senders.send(
+            Recipient::Sim,
+            Event::StateUpdate(
+                StateUpdate::new()
+                    .power_matrix(&self.power_matrix)
+                    .particle_counts(&self.particle_counts),
+            ),
+        );
+        self.senders.send(Recipient::Sim, Event::SpawnParticles);
     }
 }
 
@@ -385,18 +401,14 @@ impl App for SmarticlesApp {
                         self.apply_seed();
                         self.senders.send(
                             Recipient::Sim,
-                            Event::StateUpdate(
-                                StateUpdate::new()
-                                    .power_matrix(&self.power_matrix)
-                                    .particle_counts(&self.particle_counts),
-                            ),
+                            Event::StateUpdate(StateUpdate::new().power_matrix(&self.power_matrix)),
                         );
                         self.senders.send(Recipient::Sim, Event::SpawnParticles);
                     }
 
                     if ui
                         .button("reset view")
-                        .on_hover_text("reset zoom and view position")
+                        .on_hover_text("reset zoom and position")
                         .clicked()
                     {
                         self.view = View::DEFAULT;
@@ -404,7 +416,7 @@ impl App for SmarticlesApp {
 
                     if ui
                         .button("reset")
-                        .on_hover_text("reset everything")
+                        .on_hover_text("reset particle counts and params")
                         .clicked()
                     {
                         self.reset();
@@ -435,11 +447,7 @@ impl App for SmarticlesApp {
                         self.apply_seed();
                         self.senders.send(
                             Recipient::Sim,
-                            Event::StateUpdate(
-                                StateUpdate::new()
-                                    .power_matrix(&self.power_matrix)
-                                    .particle_counts(&self.particle_counts),
-                            ),
+                            Event::StateUpdate(StateUpdate::new().power_matrix(&self.power_matrix)),
                         );
                         self.senders.send(Recipient::Sim, Event::SpawnParticles);
                     }
@@ -450,16 +458,23 @@ impl App for SmarticlesApp {
 
                     let total_particle_count: usize = self.particle_counts.iter().sum();
                     ui.code(total_particle_count.to_string());
-
-                    ui.checkbox(&mut self.locked_particle_counts, "lock particle counts");
                 });
 
-                ui.horizontal(|ui| {
-                    ui.label("computation time:");
-                    if let Some(dt) = self.computation_time_graph.front() {
+                if let Some(dt) = self.computation_time_graph.front() {
+                    ui.horizontal(|ui| {
+                        ui.label("computation time:");
                         ui.code(format!("{:.1}ms", dt));
-                    }
-                });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("average over last 200 computations:");
+                        ui.code(format!(
+                            "{:.1}ms",
+                            self.computation_time_graph.iter().sum::<f32>()
+                                / self.computation_time_graph.len() as f32
+                        ));
+                    });
+                }
 
                 ui.horizontal(|ui| {
                     Plot::new("computation time")
@@ -501,9 +516,7 @@ impl App for SmarticlesApp {
                             self.senders.send(
                                 Recipient::Sim,
                                 Event::StateUpdate(
-                                    StateUpdate::new()
-                                        .power_matrix(&self.power_matrix)
-                                        .particle_counts(&self.particle_counts),
+                                    StateUpdate::new().power_matrix(&self.power_matrix),
                                 ),
                             );
                             self.senders.send(Recipient::Sim, Event::SpawnParticles);
@@ -642,87 +655,80 @@ impl App for SmarticlesApp {
                 ScrollArea::vertical().show(ui, |ui| {
                     for i in 0..CLASS_COUNT {
                         ui.add_space(10.);
-                        ui.horizontal(|ui| {
-                            ui.colored_label(self.classes[i].color, &self.classes[i].heading);
-
-                            if self.classes[i].enabled {
-                                if ui.button("disable").clicked() {
-                                    self.classes[i].enabled = false;
-                                    self.senders.send(Recipient::Sim, Event::DisableClass(i));
-                                }
-                            } else if ui.button("enable").clicked() {
-                                self.classes[i].enabled = true;
-                                self.senders.send(Recipient::Sim, Event::EnsableClass(i));
-                            }
-                        });
+                        ui.colored_label(self.classes[i].color, &self.classes[i].heading);
                         ui.separator();
 
-                        if self.classes[i].enabled {
-                            ui.horizontal(|ui| {
-                                ui.label("particle count:");
-                                if ui
-                                    .add(Slider::new(
-                                        &mut self.particle_counts[i],
-                                        MIN_PARTICLE_COUNT..=MAX_PARTICLE_COUNT,
-                                    ))
-                                    .changed()
-                                {
-                                    self.senders.send(
-                                        Recipient::App,
-                                        Event::StateUpdate(
-                                            StateUpdate::new()
-                                                .particle_counts(&self.particle_counts),
-                                        ),
-                                    );
-                                    self.senders.send(Recipient::Sim, Event::SpawnParticles);
+                        ui.horizontal(|ui| {
+                            ui.label("particle count:");
+                            if ui
+                                .add(Slider::new(
+                                    &mut self.particle_counts[i],
+                                    MIN_PARTICLE_COUNT..=MAX_PARTICLE_COUNT,
+                                ))
+                                .changed()
+                            {
+                                self.senders.send(
+                                    Recipient::App,
+                                    Event::StateUpdate(
+                                        StateUpdate::new().power_matrix(&self.power_matrix),
+                                    ),
+                                );
+                                self.senders.send(Recipient::App, Event::SpawnParticles);
+                            }
+                            if ui.button("reset").clicked() {
+                                self.particle_counts[i] = DEFAULT_PARTICLE_COUNT;
+                                self.senders.send(
+                                    Recipient::App,
+                                    Event::StateUpdate(
+                                        StateUpdate::new().power_matrix(&self.power_matrix),
+                                    ),
+                                );
+                                self.senders.send(Recipient::App, Event::SpawnParticles);
+                            }
+                        });
+
+                        ui.collapsing(self.classes[i].heading.to_owned() + " params", |ui| {
+                            ui.vertical(|ui| {
+                                for j in 0..CLASS_COUNT {
+                                    ui.horizontal(|ui| {
+                                        ui.label("power of the force applied on");
+                                        let class_name = ui.colored_label(
+                                            self.classes[j].color,
+                                            &self.classes[j].name,
+                                        );
+                                        ui.add_space(5. - class_name.rect.width() / 2.);
+                                        ui.label(":");
+                                        ui.add_space(5. - class_name.rect.width() / 2.);
+                                        if ui
+                                            .add(Slider::new(
+                                                &mut self.power_matrix[(i, j)],
+                                                MIN_POWER..=MAX_POWER,
+                                            ))
+                                            .changed()
+                                        {
+                                            self.seed = self.export_custom_seed();
+                                            self.senders.send(
+                                                Recipient::App,
+                                                Event::StateUpdate(
+                                                    StateUpdate::new()
+                                                        .power_matrix(&self.power_matrix),
+                                                ),
+                                            );
+                                        }
+                                        if ui.button("reset").clicked() {
+                                            self.power_matrix[(i, j)] = 0;
+                                            self.senders.send(
+                                                Recipient::App,
+                                                Event::StateUpdate(
+                                                    StateUpdate::new()
+                                                        .power_matrix(&self.power_matrix),
+                                                ),
+                                            );
+                                        }
+                                    });
                                 }
                             });
-
-                            ui.collapsing(self.classes[i].heading.to_owned() + " params", |ui| {
-                                ui.vertical(|ui| {
-                                    for j in 0..CLASS_COUNT {
-                                        if self.classes[j].enabled {
-                                            ui.horizontal(|ui| {
-                                                ui.label("power of the force applied on");
-                                                let class_name = ui.colored_label(
-                                                    self.classes[j].color,
-                                                    &self.classes[j].name,
-                                                );
-                                                ui.add_space(5. - class_name.rect.width() / 2.);
-                                                ui.label(":");
-                                                ui.add_space(5. - class_name.rect.width() / 2.);
-                                                if ui
-                                                    .add(Slider::new(
-                                                        &mut self.power_matrix[(i, j)],
-                                                        MIN_POWER..=MAX_POWER,
-                                                    ))
-                                                    .changed()
-                                                {
-                                                    self.seed = self.export_custom_seed();
-                                                    self.senders.send(
-                                                        Recipient::App,
-                                                        Event::StateUpdate(
-                                                            StateUpdate::new()
-                                                                .power_matrix(&self.power_matrix),
-                                                        ),
-                                                    );
-                                                }
-                                                if ui.button("reset").clicked() {
-                                                    self.power_matrix[(i, j)] = 0;
-                                                    self.senders.send(
-                                                        Recipient::App,
-                                                        Event::StateUpdate(
-                                                            StateUpdate::new()
-                                                                .power_matrix(&self.power_matrix),
-                                                        ),
-                                                    );
-                                                }
-                                            });
-                                        }
-                                    }
-                                });
-                            });
-                        }
+                        });
                     }
                 });
             });
@@ -786,7 +792,7 @@ impl App for SmarticlesApp {
                     }
                 }
 
-                for c in (0..CLASS_COUNT).filter(|c| self.classes[*c].enabled) {
+                for c in 0..CLASS_COUNT {
                     let class = &self.classes[c];
 
                     for p in 0..self.particle_counts[c] {
@@ -795,7 +801,7 @@ impl App for SmarticlesApp {
 
                         paint.circle_filled(
                             pos,
-                            if (c, p) == self.selected_particle && self.classes[c].enabled {
+                            if (c, p) == self.selected_particle {
                                 PARTICLE_DIAMETER * 3.
                             } else {
                                 PARTICLE_DIAMETER

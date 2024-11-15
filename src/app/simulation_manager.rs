@@ -14,16 +14,14 @@ use crate::{
             INFERENCE_TICK_INTERVAL,
         },
     },
-    events::{Event, Recipient, Senders, StateUpdate},
+    events::{Event, Recipient, StateUpdate},
     simulation::Simulation,
-    CLASS_COUNT,
+    Senders,
 };
 
-/// Intervalle de mise à jour minimal lorsque la simulation
-/// est en fonctionnement
+/// Min update interval in ms (when the simulation is running).
 const UPDATE_INTERVAL: Duration = Duration::from_millis(30);
-/// Intervalle de mise à jour minimal lorsque la simulation
-/// est en pause
+/// Min update rate when the simulation is paused.
 const PAUSED_UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -67,7 +65,7 @@ impl SimulationManager {
             receiver,
         };
 
-        sleep(Duration::from_millis(500));
+        // sleep(Duration::from_millis(500));
 
         while slf.update() {
             ctx.request_repaint();
@@ -130,13 +128,7 @@ impl SimulationManager {
                 }
                 Event::NetworkStop => self.network_state = NetworkState::Stopped,
 
-                Event::SimulationReset => {
-                    self.simulation_state = SimulationState::Paused;
-                    self.simulation.particle_counts = [0; CLASS_COUNT];
-                }
-
                 Event::Exit => return false,
-
                 _ => {}
             }
         }
