@@ -19,8 +19,11 @@ use rand::{distributions::Open01, rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
 
 use crate::{
-    mat::Mat2D, simulation_manager::SimulationState, Senders, SmarticlesEvent, CLASS_COUNT,
-    DEFAULT_PARTICLE_COUNT, MAX_PARTICLE_COUNT, MAX_POWER, MIN_PARTICLE_COUNT, MIN_POWER,
+    events::{Event, StateUpdate},
+    mat::Mat2D,
+    simulation_manager::SimulationState,
+    Senders, CLASS_COUNT, DEFAULT_PARTICLE_COUNT, MAX_PARTICLE_COUNT, MAX_POWER,
+    MIN_PARTICLE_COUNT, MIN_POWER,
 };
 
 #[cfg(feature = "cell_map_display")]
@@ -92,7 +95,7 @@ pub struct SmarticlesApp {
     cell_map: Option<Vec<Cell>>,
 
     senders: Senders,
-    receiver: Receiver<SmarticlesEvent>,
+    receiver: Receiver<Event>,
 
     simulation_handle: Option<JoinHandle<()>>,
 
@@ -103,7 +106,7 @@ impl SmarticlesApp {
     pub fn new<S>(
         classes: [(S, Color32); CLASS_COUNT],
         senders: Senders,
-        receiver: Receiver<SmarticlesEvent>,
+        receiver: Receiver<Event>,
         simulation_handle: Option<JoinHandle<()>>,
     ) -> Self
     where
@@ -169,9 +172,12 @@ impl SmarticlesApp {
         app.seed = format!("{}_{}_{}", app.words[w1], app.words[w2], app.words[w3]);
 
         app.apply_seed();
-        app.send_power_matrix();
-        app.send_particle_counts();
-        app.spawn();
+        app.senders.send_sim(Event::StateUpdate(
+            StateUpdate::new()
+                .power_matrix(&app.power_matrix)
+                .particle_counts(&app.particle_counts),
+        ));
+        app.senders.send_sim(Event::SpawnParticles);
 
         app
     }
@@ -220,17 +226,6 @@ impl SmarticlesApp {
         }
     }
 
-    fn send_power_matrix(&self) {
-        self.senders.send_sim(SmarticlesEvent::PowerMatrixChange(
-            self.power_matrix.to_owned(),
-        ));
-    }
-    fn send_particle_counts(&self) {
-        self.senders.send_sim(SmarticlesEvent::ParticleCountsUpdate(
-            self.particle_counts.to_owned(),
-        ));
-    }
-
     fn update_history(&mut self) {
         if self
             .history
@@ -248,27 +243,27 @@ impl SmarticlesApp {
 
     fn play(&mut self) {
         self.simulation_state = SimulationState::Running;
-        self.senders.send_sim(SmarticlesEvent::SimulationStart);
+        self.senders.send_sim(Event::SimulationStart);
     }
     fn pause(&mut self) {
         self.simulation_state = SimulationState::Paused;
-        self.senders.send_sim(SmarticlesEvent::SimulationPause);
+        self.senders.send_sim(Event::SimulationPause);
     }
     fn reset(&mut self) {
         self.simulation_state = SimulationState::Paused;
-        self.senders.send_sim(SmarticlesEvent::SimulationPause);
+        self.senders.send_sim(Event::SimulationPause);
         self.particle_counts = [DEFAULT_PARTICLE_COUNT; CLASS_COUNT];
         for i in 0..CLASS_COUNT {
             for j in 0..CLASS_COUNT {
                 self.power_matrix[(i, j)] = 0;
             }
         }
-        self.send_power_matrix();
-        self.send_particle_counts();
-        self.spawn();
-    }
-    fn spawn(&mut self) {
-        self.senders.send_sim(SmarticlesEvent::SpawnParticles);
+        self.senders.send_sim(Event::StateUpdate(
+            StateUpdate::new()
+                .power_matrix(&self.power_matrix)
+                .particle_counts(&self.particle_counts),
+        ));
+        self.senders.send_sim(Event::SpawnParticles);
     }
 }
 
@@ -276,28 +271,39 @@ impl App for SmarticlesApp {
     fn update(&mut self, ctx: &Context, _: &mut Frame) {
         let events = self.receiver.try_iter();
         for event in events {
-            match event {
-                SmarticlesEvent::SimulationResults(positions, elapsed) => {
-                    if let Some(elapsed) = elapsed {
-                        self.computation_time_graph
-                            .push_front(elapsed.as_secs_f32() * 1000.);
-                        if self.computation_time_graph.len() > 200 {
-                            self.computation_time_graph.truncate(200);
-                        }
+            if let Event::StateUpdate(StateUpdate {
+                particle_positions,
+                computation_time,
+
+                power_matrix,
+                particle_counts,
+
+                #[cfg(feature = "cell_map_display")]
+                cell_map,
+            }) = event
+            {
+                if let Some(particle_positions) = particle_positions {
+                    self.particle_positions = particle_positions;
+                }
+                if let Some(computation_time) = computation_time {
+                    self.computation_time_graph
+                        .push_front(computation_time.as_secs_f32() * 1000.);
+                    if self.computation_time_graph.len() > 200 {
+                        self.computation_time_graph.truncate(200);
                     }
-                    self.particle_positions = positions;
                 }
 
-                SmarticlesEvent::PowerMatrixChange(power_matrix) => {
+                if let Some(power_matrix) = power_matrix {
                     self.power_matrix = power_matrix;
+                }
+                if let Some(particle_counts) = particle_counts {
+                    self.particle_counts = particle_counts;
                 }
 
                 #[cfg(feature = "cell_map_display")]
-                SmarticlesEvent::CellMap(cell_map) => {
+                if let Some(cell_map) = cell_map {
                     self.cell_map = Some(cell_map);
                 }
-
-                _ => {}
             }
         }
 
@@ -311,7 +317,7 @@ impl App for SmarticlesApp {
                         .on_hover_text("spawn particles again")
                         .clicked()
                     {
-                        self.spawn();
+                        self.senders.send_sim(Event::SpawnParticles);
                     }
 
                     if self.simulation_state == SimulationState::Running {
@@ -344,8 +350,10 @@ impl App for SmarticlesApp {
                         self.update_history();
 
                         self.apply_seed();
-                        self.send_power_matrix();
-                        self.spawn();
+                        self.senders.send_sim(Event::StateUpdate(
+                            StateUpdate::new().power_matrix(&self.power_matrix),
+                        ));
+                        self.senders.send_sim(Event::SpawnParticles);
                     }
 
                     if ui
@@ -369,7 +377,7 @@ impl App for SmarticlesApp {
                     }
 
                     if ui.button("quit").on_hover_text("exit smarticles").clicked() {
-                        self.senders.send_sim(SmarticlesEvent::Quit);
+                        self.senders.send_sim(Event::Exit);
                         if let Some(handle) = self.simulation_handle.take() {
                             handle.join().unwrap();
                         };
@@ -384,8 +392,10 @@ impl App for SmarticlesApp {
                         self.update_history();
 
                         self.apply_seed();
-                        self.send_power_matrix();
-                        self.spawn();
+                        self.senders.send_sim(Event::StateUpdate(
+                            StateUpdate::new().power_matrix(&self.power_matrix),
+                        ));
+                        self.senders.send_sim(Event::SpawnParticles);
                     }
                 });
 
@@ -449,8 +459,10 @@ impl App for SmarticlesApp {
                         {
                             self.history[self.selected_history_entry].clone_into(&mut self.seed);
                             self.apply_seed();
-                            self.send_power_matrix();
-                            self.spawn();
+                            self.senders.send_sim(Event::StateUpdate(
+                                StateUpdate::new().power_matrix(&self.power_matrix),
+                            ));
+                            self.senders.send_sim(Event::SpawnParticles);
                         };
                     });
                 }
@@ -501,11 +513,11 @@ impl App for SmarticlesApp {
                             if self.classes[i].enabled {
                                 if ui.button("disable").clicked() {
                                     self.classes[i].enabled = false;
-                                    self.senders.send_sim(SmarticlesEvent::DisableClass(i));
+                                    self.senders.send_sim(Event::DisableClass(i));
                                 }
                             } else if ui.button("enable").clicked() {
                                 self.classes[i].enabled = true;
-                                self.senders.send_sim(SmarticlesEvent::EnableClass(i));
+                                self.senders.send_sim(Event::EnableClass(i));
                             }
                         });
                         ui.separator();
@@ -520,13 +532,17 @@ impl App for SmarticlesApp {
                                     ))
                                     .changed()
                                 {
-                                    self.send_particle_counts();
-                                    self.spawn();
+                                    self.senders.send_sim(Event::StateUpdate(
+                                        StateUpdate::new().power_matrix(&self.power_matrix),
+                                    ));
+                                    self.senders.send_sim(Event::SpawnParticles);
                                 }
                                 if ui.button("reset").clicked() {
                                     self.particle_counts[i] = DEFAULT_PARTICLE_COUNT;
-                                    self.send_particle_counts();
-                                    self.spawn();
+                                    self.senders.send_sim(Event::StateUpdate(
+                                        StateUpdate::new().power_matrix(&self.power_matrix),
+                                    ));
+                                    self.senders.send_sim(Event::SpawnParticles);
                                 }
                             });
 
@@ -551,11 +567,17 @@ impl App for SmarticlesApp {
                                                     .changed()
                                                 {
                                                     self.seed = self.export_custom_seed();
-                                                    self.send_power_matrix();
+                                                    self.senders.send_sim(Event::StateUpdate(
+                                                        StateUpdate::new()
+                                                            .power_matrix(&self.power_matrix),
+                                                    ));
                                                 }
                                                 if ui.button("reset").clicked() {
                                                     self.power_matrix[(i, j)] = 0;
-                                                    self.send_power_matrix();
+                                                    self.senders.send_sim(Event::StateUpdate(
+                                                        StateUpdate::new()
+                                                            .power_matrix(&self.power_matrix),
+                                                    ));
                                                 }
                                             });
                                         }

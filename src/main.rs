@@ -1,20 +1,17 @@
 mod app;
+mod events;
 mod mat;
 mod simulation;
 mod simulation_manager;
 
-use std::{
-    sync::mpsc::{channel, Sender},
-    thread,
-    time::Duration,
-};
+use std::{sync::mpsc::channel, thread, time::Duration};
 
 use eframe::{
-    egui::{Vec2, ViewportBuilder},
+    egui::ViewportBuilder,
     epaint::{Color32, Hsva},
     NativeOptions,
 };
-use mat::Mat2D;
+use events::{Event, Senders};
 
 use crate::{app::SmarticlesApp, simulation_manager::SimulationManager};
 
@@ -50,8 +47,8 @@ fn main() {
         ..Default::default()
     };
 
-    let (ui_sender, ui_receiver) = channel::<SmarticlesEvent>();
-    let (sim_sender, sim_receiver) = channel::<SmarticlesEvent>();
+    let (ui_sender, ui_receiver) = channel::<Event>();
+    let (sim_sender, sim_receiver) = channel::<Event>();
 
     let senders = Senders::new(ui_sender, sim_sender);
 
@@ -105,45 +102,45 @@ fn main() {
     .unwrap();
 }
 
-#[derive(Debug, Clone)]
-struct Senders {
-    ui_sender: Sender<SmarticlesEvent>,
-    sim_sender: Sender<SmarticlesEvent>,
-}
+// #[derive(Debug, Clone)]
+// struct Senders {
+//     ui_sender: Sender<SmarticlesEvent>,
+//     sim_sender: Sender<SmarticlesEvent>,
+// }
 
-impl Senders {
-    pub fn new(ui_sender: Sender<SmarticlesEvent>, sim_sender: Sender<SmarticlesEvent>) -> Self {
-        Senders {
-            ui_sender,
-            sim_sender,
-        }
-    }
+// impl Senders {
+//     pub fn new(ui_sender: Sender<SmarticlesEvent>, sim_sender: Sender<SmarticlesEvent>) -> Self {
+//         Senders {
+//             ui_sender,
+//             sim_sender,
+//         }
+//     }
 
-    pub fn send_ui(&self, event: SmarticlesEvent) {
-        self.ui_sender.send(event).unwrap()
-    }
-    pub fn send_sim(&self, event: SmarticlesEvent) {
-        self.sim_sender.send(event).unwrap()
-    }
-}
+//     pub fn send_ui(&self, event: SmarticlesEvent) {
+//         self.ui_sender.send(event).unwrap()
+//     }
+//     pub fn send_sim(&self, event: SmarticlesEvent) {
+//         self.sim_sender.send(event).unwrap()
+//     }
+// }
 
-#[derive(Debug, Clone)]
-enum SmarticlesEvent {
-    Quit,
+// #[derive(Debug, Clone)]
+// enum SmarticlesEvent {
+//     Quit,
 
-    SpawnParticles,
+//     SpawnParticles,
 
-    /// Particle positions and elapsed time (if available).
-    SimulationResults(Mat2D<Vec2>, Option<Duration>),
+//     /// Particle positions and elapsed time (if available).
+//     SimulationResults(Mat2D<Vec2>, Option<Duration>),
 
-    #[cfg(feature = "cell_map_display")]
-    CellMap(Vec<Cell>),
+//     #[cfg(feature = "cell_map_display")]
+//     CellMap(Vec<Cell>),
 
-    EnableClass(usize),
-    DisableClass(usize),
-    PowerMatrixChange(Mat2D<i8>),
-    ParticleCountsUpdate([usize; CLASS_COUNT]),
+//     EnableClass(usize),
+//     DisableClass(usize),
+//     PowerMatrixChange(Mat2D<i8>),
+//     ParticleCountsUpdate([usize; CLASS_COUNT]),
 
-    SimulationStart,
-    SimulationPause,
-}
+//     SimulationStart,
+//     SimulationPause,
+// }
