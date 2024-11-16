@@ -126,13 +126,12 @@ impl Simulation {
                     for &(c2, p2) in &neighboring_particles {
                         // Coefficient de la force appliquée par les particules de
                         // la classe 2 sur celles de la classe 1
-                        let power = -self.power_matrix[(c2, c1)];
+                        let power = -self.power_matrix[(c2, c1)] as f32;
                         let other_pos = self.particle_positions[(c2, p2)];
 
                         let distance = other_pos - pos;
                         // Force appliquée par la particule 2 sur la particule 1
-                        force +=
-                            distance.normalized() * compute_force(distance.length(), power as f32);
+                        force += distance.normalized() * compute_force(distance.length(), power);
                     }
 
                     let prev_pos = self.particle_prev_positions[(c1, p1)];
