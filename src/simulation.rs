@@ -10,7 +10,7 @@ use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 pub const PROXIMITY_POWER: f32 = -160.;
 
 const DAMPING_FACTOR: f32 = 100.;
-const FORCE_SCALING_FACTOR: f32 = 0.0004;
+const DT: f32 = 0.0004;
 
 const SPAWN_DENSITY: f32 = 0.035;
 
@@ -138,10 +138,9 @@ impl Simulation {
 
                     // Ajout d'une force de frottement
                     force += (prev_pos - pos) * DAMPING_FACTOR;
-                    force *= FORCE_SCALING_FACTOR;
 
                     // Algorithme de Verlet
-                    let new_pos = 2. * pos - prev_pos + force;
+                    let new_pos = 2. * pos - prev_pos + force * DT;
 
                     new_positions.push(((c1, p1), (pos, new_pos)));
                 }
