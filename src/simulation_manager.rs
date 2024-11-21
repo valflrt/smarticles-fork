@@ -62,9 +62,7 @@ impl SimulationManager {
                 Event::SpawnParticles => {
                     self.simulation.spawn();
                     self.senders.send_app(Event::StateUpdate(
-                        StateUpdate::new()
-                            .particle_positions(&self.simulation.particle_positions)
-                            .particle_counts(&self.simulation.particle_counts),
+                        StateUpdate::new().particle_positions(&self.simulation.particle_positions),
                     ))
                 }
 

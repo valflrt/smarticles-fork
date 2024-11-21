@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use eframe::egui::{ahash::HashMapExt, Vec2};
+use eframe::egui::Vec2;
 use fnv::FnvHashMap;
 use rand::random;
 use rayon::prelude::*;
@@ -10,7 +10,7 @@ use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 pub const PROXIMITY_POWER: f32 = -160.;
 
 const DAMPING_FACTOR: f32 = 100.;
-const FORCE_SCALING_FACTOR: f32 = 0.0004;
+const DT: f32 = 0.0004;
 
 const SPAWN_DENSITY: f32 = 0.035;
 
@@ -135,10 +135,9 @@ impl Simulation {
 
                     // scale calculated force and add damping
                     force += (prev_pos - pos) * DAMPING_FACTOR;
-                    force *= FORCE_SCALING_FACTOR;
 
                     // Verlet integration
-                    let new_pos = 2. * pos - prev_pos + force;
+                    let new_pos = 2. * pos - prev_pos + force * DT;
 
                     new_positions.push(((c1, p1), (pos, new_pos)));
                 }
@@ -194,11 +193,7 @@ impl Default for Simulation {
             particle_prev_positions: particle_positions.to_owned(),
             particle_positions,
 
-            cell_map: FnvHashMap::with_capacity(
-                (1.2 * ((CLASS_COUNT * MAX_PARTICLE_COUNT) as f32).sqrt()
-                    / (SPAWN_DENSITY * Cell::CELL_SIZE))
-                    .powi(2) as usize, // more or less the maximum possible initial number of cells
-            ),
+            cell_map: FnvHashMap::default(),
         };
         sim.spawn();
         sim
