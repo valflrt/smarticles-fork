@@ -26,7 +26,7 @@ pub fn compute_force(radius: f32, power: f32) -> f32 {
     } else if radius < FIRST_THRESHOLD + SECOND_THRESHOLD {
         (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD) * power
     } else if radius < FIRST_THRESHOLD + 2. * SECOND_THRESHOLD {
-        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * power
+        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD - 2.) * power
     } else {
         0.
     }
