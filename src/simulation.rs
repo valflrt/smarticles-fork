@@ -22,11 +22,11 @@ const INTERACTION_RANGE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD;
 
 pub fn compute_force(radius: f32, power: f32) -> f32 {
     if radius < FIRST_THRESHOLD {
-        (radius / FIRST_THRESHOLD - 1.) * PROXIMITY_POWER
+        (-radius / FIRST_THRESHOLD + 1.) * PROXIMITY_POWER
     } else if radius < FIRST_THRESHOLD + SECOND_THRESHOLD {
-        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD) * power
+        (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD) * power
     } else if radius < FIRST_THRESHOLD + 2. * SECOND_THRESHOLD {
-        (-radius / SECOND_THRESHOLD + FIRST_THRESHOLD / SECOND_THRESHOLD + 2.) * power
+        (radius / SECOND_THRESHOLD - FIRST_THRESHOLD / SECOND_THRESHOLD - 2.) * power
     } else {
         0.
     }
@@ -127,7 +127,7 @@ impl Simulation {
                         let other_pos = self.particle_positions[(c2, p2)];
 
                         let distance = other_pos - pos;
-                        force -=
+                        force +=
                             distance.normalized() * compute_force(distance.length(), power as f32);
                     }
 
