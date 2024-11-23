@@ -9,6 +9,7 @@ use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
 
 pub const PROXIMITY_POWER: f32 = -160.;
 
+// TODO make this interactive (changeable from ui)
 const DAMPING_FACTOR: f32 = 100.;
 const DT: f32 = 0.0004;
 
