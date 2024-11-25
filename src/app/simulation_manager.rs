@@ -4,14 +4,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use eframe::egui::Context;
+use eframe::egui::{Context, Vec2};
 
 use crate::{
     ai::{
         net::Network,
         training::{
-            adapt_input, apply_output, setup_simulation_for_networks, spawn_particules,
-            INFERENCE_TICK_INTERVAL,
+            adapt_input, apply_output, calc_geometric_center, get_avg_distance_between_particles,
+            setup_simulation_for_networks, INFERENCE_TICK_INTERVAL,
         },
     },
     events::{Event, Recipient, StateUpdate},
@@ -44,6 +44,7 @@ pub struct SimulationManager {
     steps: usize,
     network_state: NetworkState,
     target_angle: f32,
+    last_geometric_center: Vec2,
 
     senders: Senders,
     receiver: Receiver<Event>,
@@ -60,6 +61,7 @@ impl SimulationManager {
             steps: 0,
             network_state: NetworkState::Stopped,
             target_angle: 0.,
+            last_geometric_center: Vec2::ZERO,
 
             senders,
             receiver,
@@ -114,7 +116,8 @@ impl SimulationManager {
 
                 Event::NetworkStart => {
                     setup_simulation_for_networks(&mut self.simulation);
-                    spawn_particules(self.target_angle, &mut self.simulation);
+                    // custom_particule_spawn(self.target_angle, &mut self.simulation);
+                    self.simulation.spawn();
                     self.senders.send(
                         Recipient::App,
                         Event::StateUpdate(
@@ -141,9 +144,18 @@ impl SimulationManager {
             if self.network_state == NetworkState::Running {
                 if let Some(network) = &self.network {
                     if self.steps % INFERENCE_TICK_INTERVAL == 0 {
+                        let avg_distance_between_particles =
+                            get_avg_distance_between_particles(&self.simulation);
+                        let gc = calc_geometric_center(&self.simulation);
+
+                        let movement = gc - self.last_geometric_center;
+
                         let output = network.infer(adapt_input(
                             self.target_angle,
-                            self.simulation.power_matrix.to_owned(),
+                            movement,
+                            movement.x * self.target_angle.cos()
+                                + movement.y * self.target_angle.sin(),
+                            avg_distance_between_particles,
                         ));
                         apply_output(output, &mut self.simulation.power_matrix);
 

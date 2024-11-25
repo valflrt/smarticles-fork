@@ -36,7 +36,7 @@ pub fn compute_force(radius: f32, power: f32) -> f32 {
 pub struct Cell(pub i32, pub i32);
 
 impl Cell {
-    pub const CELL_SIZE: f32 = INTERACTION_RANGE / 3.;
+    pub const CELL_SIZE: f32 = INTERACTION_RANGE;
 
     pub fn from_position(position: Vec2) -> Self {
         Self(
@@ -153,7 +153,7 @@ impl Simulation {
             })
     }
 
-    fn get_neighboring_particles(&self, cell: Cell) -> Vec<(usize, usize)> {
+    pub fn get_neighboring_particles(&self, cell: Cell) -> Vec<(usize, usize)> {
         cell.get_neighbors()
             // .iter()
             // get non-empty cells

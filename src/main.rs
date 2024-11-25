@@ -62,8 +62,8 @@ fn main() {
         const HIDDEN_LAYER_SIZE: usize = 8;
         let batch = Batch::new(Vec::from_iter((0..BATCH_SIZE).map(|_| {
             Network::new([
-                Layer::random(NETWORK_INPUT_SIZE, HIDDEN_LAYER_SIZE, ActivationFn::Tanh),
-                Layer::random(HIDDEN_LAYER_SIZE, NETWORK_OUTPUT_SIZE, ActivationFn::Tanh),
+                Layer::init(NETWORK_INPUT_SIZE, HIDDEN_LAYER_SIZE, ActivationFn::Tanh),
+                Layer::init(HIDDEN_LAYER_SIZE, NETWORK_OUTPUT_SIZE, ActivationFn::Tanh),
             ])
         })));
         batch.save();

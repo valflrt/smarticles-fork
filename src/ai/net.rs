@@ -80,12 +80,13 @@ impl Network {
         out
     }
 
-    /// Combine the current network with another by randomly
-    /// choosing single biases and weights from their two parents.
+    /// Combine ce réseau avec un autre en choisissant aléatoirement
+    /// des poids ou des biais de l'un ou de l'autre des deux
+    /// parents.
     ///
-    /// `selection_probability` is between 0 and 1 and represents
-    /// the probability of the weight/bias the current network being
-    /// chosen.
+    /// `selection_probability` est la probabilité de choisir des
+    /// poids/biais du réseau actuel plutôt que du réseau passé
+    /// en paramètre.
     pub fn crossover(self, other: Self, selection_probability: f32) -> Self {
         let selection_probability = selection_probability as f64;
         let mut rng = rand::thread_rng();
@@ -119,6 +120,18 @@ pub struct Layer {
 }
 
 impl Layer {
+    pub fn init(input_size: usize, output_size: usize, activation_fn: ActivationFn) -> Self {
+        let weights = Mat2D::filled_with(0., output_size, input_size);
+        let biases = Mat2D::filled_with(0., output_size, 1);
+        Layer {
+            input_size,
+            output_size,
+            weights,
+            biases,
+            activation_fn,
+        }
+    }
+
     pub fn random(input_size: usize, output_size: usize, activation_fn: ActivationFn) -> Self {
         let max = 1. / (input_size as f32).sqrt();
         let weights = Mat2D::random(Uniform::new(-max, max), output_size, input_size);

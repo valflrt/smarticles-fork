@@ -10,23 +10,27 @@ use crate::{mat::Mat2D, simulation::Simulation, CLASS_COUNT, MAX_POWER};
 
 use super::net::Network;
 
-pub const BATCH_SIZE: usize = 50;
+pub const BATCH_SIZE: usize = 40;
 
-pub const NETWORK_INPUT_SIZE: usize = 1 + CLASS_COUNT * CLASS_COUNT;
+pub const NETWORK_INPUT_SIZE: usize = 5;
 pub const NETWORK_OUTPUT_SIZE: usize = CLASS_COUNT * CLASS_COUNT;
 
-pub const INFERENCE_TICK_INTERVAL: usize = 20;
+pub const INFERENCE_TICK_INTERVAL: usize = 100;
 
 /// Formate les entrées en un vecteur
-pub fn adapt_input(target_angle: f32, power_matrix: Mat2D<i8>) -> Vec<f32> {
-    [
-        &[target_angle],
-        &power_matrix
-            .iter()
-            .map(|x| *x as f32 / 10.)
-            .collect::<Vec<_>>()[..],
+pub fn adapt_input(
+    target_angle: f32,
+    movement: Vec2,
+    avg_movement_projection: f32,
+    avg_distance_between_particles: f32,
+) -> Vec<f32> {
+    vec![
+        target_angle,
+        movement.x,
+        movement.y,
+        avg_movement_projection,
+        avg_distance_between_particles,
     ]
-    .concat()
 }
 /// Change les coefficients de la `power_matrix` selon la
 /// sortie du réseau
@@ -36,8 +40,29 @@ pub fn apply_output(output: Vec<f32>, power_matrix: &mut Mat2D<i8>) {
         .iter_mut()
         .enumerate()
         .for_each(|(i, power)| {
-            *power = (*power + (output[i] * 10.) as i8).clamp(-MAX_POWER, MAX_POWER);
+            *power = (output[i] * 100.) as i8;
         });
+}
+
+pub fn get_avg_distance_between_particles(sim: &Simulation) -> f32 {
+    let mut distance_sum = 0.;
+    let mut n = 0.;
+
+    sim.cell_map.iter().for_each(|(&cell, particles)| {
+        let neighboring_particles = sim.get_neighboring_particles(cell);
+
+        for &(c1, p1) in particles.iter() {
+            let pos = sim.particle_positions[(c1, p1)];
+            for &(c2, p2) in &neighboring_particles {
+                let other_pos = sim.particle_positions[(c2, p2)];
+
+                distance_sum += (other_pos - pos).length();
+                n += 1.;
+            }
+        }
+    });
+
+    distance_sum / n
 }
 
 pub fn random_target_angle() -> f32 {
@@ -49,11 +74,9 @@ pub fn setup_simulation_for_networks(sim: &mut Simulation) {
     sim.particle_counts = [8; CLASS_COUNT];
 
     sim.power_matrix.vec_mut().iter_mut().for_each(|p| *p = 0);
-
-    // sim.reset_particles_positions();
 }
 
-pub fn spawn_particules(target_angle: f32, sim: &mut Simulation) {
+pub fn custom_particule_spawn(target_angle: f32, sim: &mut Simulation) {
     let spawn_radius = (sim.particle_count() as f32 / PI).sqrt() * 3.;
 
     for c in 0..CLASS_COUNT {
@@ -79,10 +102,8 @@ pub struct EvaluationData {
     /// (normalisé) sur le vecteur unitaire dont la direction est
     /// la direction cible (angle cible)
     movement_projection_avg: f32,
-    /// Distance maximale entre les particules
-    max_distance_between_particles: f32,
     /// Distance moyenne entre les particules
-    distance_between_particles_avg: f32,
+    avg_distance_between_particles: f32,
     ///
     average_power_change: f32,
 }
@@ -91,8 +112,7 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
     let mut evaluation_data = EvaluationData {
         movement_norm_avg: 0.,
         movement_projection_avg: 0.,
-        max_distance_between_particles: 0.,
-        distance_between_particles_avg: 0.,
+        avg_distance_between_particles: 0.,
         average_power_change: 0.,
     };
 
@@ -101,11 +121,12 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
 
     let mut sim = Simulation::default();
     setup_simulation_for_networks(&mut sim);
-    spawn_particules(target_angle, &mut sim);
+    // custom_particule_spawn(target_angle, &mut sim);
+    sim.spawn();
 
     let mut prev_gc = calc_geometric_center(&sim);
 
-    const MAX_TICK_COUNT: usize = 6000;
+    const MAX_TICK_COUNT: usize = 8000;
     const MAX_INFERENCE_TICK_COUNT: usize = MAX_TICK_COUNT / INFERENCE_TICK_INTERVAL;
 
     // boucle permettant d'évaluer le réseau pendant un certain
@@ -128,40 +149,28 @@ pub fn evaluation_fn(network: Network) -> EvaluationData {
         // calcul du vecteur déplacement
         let movement = gc - prev_gc;
         let movement_norm = movement.length();
-        let movement = movement.normalized();
 
         evaluation_data.movement_norm_avg += movement_norm / MAX_INFERENCE_TICK_COUNT as f32;
 
         // calcul du produit scalaire
-        evaluation_data.movement_projection_avg += (movement.x * target_angle.cos()
-            + movement.y * target_angle.sin())
+        evaluation_data.movement_projection_avg += (movement.normalized().x * target_angle.cos()
+            + movement.normalized().y * target_angle.sin())
             / MAX_INFERENCE_TICK_COUNT as f32;
 
         // calcul de la distance moyenne entre les particules
-        // complexité en O(N^2) avec N le nombre de particules
-        let mut distance_between_particles_sum = 0.;
-        for c1 in 0..CLASS_COUNT {
-            for p1 in 0..sim.particle_counts[c1] {
-                for c2 in 0..CLASS_COUNT {
-                    for p2 in 0..sim.particle_counts[c2] {
-                        let distance = (sim.particle_positions[(c1, p1)]
-                            - sim.particle_positions[(c2, p2)])
-                            .length();
-                        evaluation_data.max_distance_between_particles =
-                            distance.max(evaluation_data.max_distance_between_particles);
-                        distance_between_particles_sum += distance;
-                    }
-                }
-            }
-        }
-        evaluation_data.distance_between_particles_avg += distance_between_particles_sum
-            / (sim.particle_count().pow(2) * MAX_INFERENCE_TICK_COUNT) as f32;
+        evaluation_data.avg_distance_between_particles +=
+            get_avg_distance_between_particles(&sim) / MAX_INFERENCE_TICK_COUNT as f32;
 
         prev_gc = gc;
 
         // applique les paramètres donnés par le réseau aux paramètres
         // de la simulation
-        let output = network.infer(adapt_input(target_angle, sim.power_matrix.to_owned()));
+        let output = network.infer(adapt_input(
+            target_angle,
+            movement,
+            evaluation_data.movement_projection_avg,
+            evaluation_data.avg_distance_between_particles,
+        ));
 
         evaluation_data.average_power_change += sim
             .power_matrix
