@@ -34,7 +34,15 @@ pub fn compute_force(radius: f32, power: f32) -> f32 {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub struct Cell(pub i32, pub i32);
+enum Quarter {
+    NorthEast,
+    SouthEast,
+    SouthWest,
+    NorthWest,
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub struct Cell(pub i32, pub i32, pub Option<Quarter>);
 
 impl Cell {
     pub const CELL_SIZE: f32 = INTERACTION_RANGE / 3.;
@@ -43,6 +51,7 @@ impl Cell {
         Self(
             (position.x / Self::CELL_SIZE).floor() as i32,
             (position.y / Self::CELL_SIZE).floor() as i32,
+            None,
         )
     }
 
@@ -51,11 +60,25 @@ impl Cell {
         // `ceil(INTERACTION_RANGE / Cell::CELL_SIZE)`
         const R: i32 = (INTERACTION_RANGE / Cell::CELL_SIZE) as i32;
 
-        let Cell(x, y) = *self;
+        let Cell(x, y, quarter) = *self;
 
-        (-R..=R)
-            .flat_map(move |i| (-R..=R).map(move |j| (i, j)))
-            .map(move |(i, j)| Cell(x + i, y + j))
+        let (rows, columns) = if let Some(quarter) = quarter {
+            match quarter {
+                //     + > i
+                //     v
+                //     j
+                //                     i      j
+                Quarter::NorthEast => (0..=R, -R..=-1),
+                Quarter::SouthEast => (0..=R, 0..=R),
+                Quarter::SouthWest => (-R..=-1, 0..=R),
+                Quarter::NorthWest => (-R..=-1, -R..=-1),
+            }
+        } else {
+            (-R..=R, -R..=R)
+        };
+
+        rows.flat_map(move |i| columns.clone().map(move |j| (i, j)))
+            .map(move |(i, j)| Cell(x + i, y + j, quarter))
     }
 }
 
