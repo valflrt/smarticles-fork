@@ -19,11 +19,15 @@ use rand::{distributions::Open01, rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
 
 use crate::{
+    consts::{
+        CLASS_COUNT, DEFAULT_PARTICLE_COUNT, DEFAULT_ZOOM, MAX_HISTORY_LEN, MAX_PARTICLE_COUNT,
+        MAX_POWER, MAX_ZOOM, MIN_PARTICLE_COUNT, MIN_POWER, MIN_ZOOM, PARTICLE_DIAMETER,
+        ZOOM_FACTOR,
+    },
     events::{Event, StateUpdate},
     mat::Mat2D,
     simulation_manager::SimulationState,
-    Senders, CLASS_COUNT, DEFAULT_PARTICLE_COUNT, MAX_PARTICLE_COUNT, MAX_POWER,
-    MIN_PARTICLE_COUNT, MIN_POWER,
+    Senders,
 };
 
 #[cfg(feature = "cell_map_display")]
@@ -31,17 +35,6 @@ use {
     crate::simulation::Cell,
     eframe::egui::{Rect, Rounding, Stroke},
 };
-
-/// Display diameter of the particles in the simulation (in
-/// pixels).
-const PARTICLE_DIAMETER: f32 = 0.6;
-
-const DEFAULT_ZOOM: f32 = 2.;
-const MIN_ZOOM: f32 = 0.5;
-const MAX_ZOOM: f32 = 30.;
-const ZOOM_FACTOR: f32 = 1.05;
-
-const MAX_HISTORY_LEN: usize = 10;
 
 pub struct View {
     zoom: f32,

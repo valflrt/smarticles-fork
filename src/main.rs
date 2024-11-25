@@ -1,4 +1,5 @@
 mod app;
+mod consts;
 mod events;
 mod mat;
 mod simulation;
@@ -6,6 +7,7 @@ mod simulation_manager;
 
 use std::{sync::mpsc::channel, thread, time::Duration};
 
+use consts::CLASS_COUNT;
 use eframe::{
     egui::ViewportBuilder,
     epaint::{Color32, Hsva},
@@ -17,29 +19,6 @@ use crate::{app::SmarticlesApp, simulation_manager::SimulationManager};
 
 #[cfg(feature = "cell_map_display")]
 use simulation::Cell;
-
-// IDEA Add recordings ? By exporting positions of all the
-// particles each frame ? That would make around 8000 postions
-// every 1/60 second that is to say 60*8000=480,000 positions
-// per second, let's assume a position is 8 bytes (from Vec2),
-// then one second of simulation is 8*480,000=3,840,000 bytes
-// this is around 4MB. 1min of simulation is 60*4=240MB.
-// This seems possible, although not for long recordings.
-// Saving the exact starting position might also work although
-// if the simulation runs for too long there might be differences
-// between computers.
-
-const CLASS_COUNT: usize = 6;
-
-/// Min particle count.
-const MIN_PARTICLE_COUNT: usize = 0;
-/// Maximal particle count per class.
-const MAX_PARTICLE_COUNT: usize = 15000;
-/// Default particle count per class.
-const DEFAULT_PARTICLE_COUNT: usize = 10000;
-
-const MAX_POWER: i8 = 100;
-const MIN_POWER: i8 = -MAX_POWER;
 
 fn main() {
     let options = NativeOptions {

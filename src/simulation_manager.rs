@@ -1,19 +1,11 @@
-use std::{
-    sync::mpsc::Receiver,
-    thread::sleep,
-    time::{Duration, Instant},
-};
+use std::{sync::mpsc::Receiver, thread::sleep, time::Instant};
 
 use crate::{
+    consts::{PAUSED_UPDATE_INTERVAL, UPDATE_INTERVAL},
     events::{Event, StateUpdate},
     simulation::Simulation,
     Senders,
 };
-
-/// Min update interval in ms (when the simulation is running).
-const UPDATE_INTERVAL: Duration = Duration::from_millis(30);
-/// Min update rate when the simulation is paused.
-const PAUSED_UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SimulationState {

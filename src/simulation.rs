@@ -5,21 +5,14 @@ use fnv::FnvHashMap;
 use rand::random;
 use rayon::prelude::*;
 
-use crate::{mat::Mat2D, CLASS_COUNT, MAX_PARTICLE_COUNT};
-
-pub const PROXIMITY_POWER: f32 = -160.;
-
-// TODO make this interactive (changeable from ui)
-const DAMPING_FACTOR: f32 = 100.;
-const DT: f32 = 0.0004;
-
-const SPAWN_DENSITY: f32 = 0.035;
-
-pub const FIRST_THRESHOLD: f32 = 4.;
-pub const SECOND_THRESHOLD: f32 = 20.;
-/// Range in which particles interact. If two particles are
-/// farther away than this distance, the will never interact.
-const INTERACTION_RANGE: f32 = FIRST_THRESHOLD + 2. * SECOND_THRESHOLD;
+use crate::{
+    consts::{
+        DAMPING_FACTOR, DT, FIRST_THRESHOLD, INTERACTION_RANGE, MAX_PARTICLE_COUNT,
+        PROXIMITY_POWER, SECOND_THRESHOLD, SPAWN_DENSITY,
+    },
+    mat::Mat2D,
+    CLASS_COUNT,
+};
 
 pub fn compute_force(radius: f32, power: f32) -> f32 {
     if radius < FIRST_THRESHOLD {

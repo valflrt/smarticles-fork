@@ -2,12 +2,10 @@ use std::{fmt::Display, sync::mpsc::Sender, time::Duration};
 
 use eframe::egui::Vec2;
 
-use crate::{mat::Mat2D, CLASS_COUNT};
+use crate::{consts::LOG, mat::Mat2D, CLASS_COUNT};
 
 #[cfg(feature = "cell_map_display")]
 use crate::simulation::Cell;
-
-const LOG: bool = false;
 
 #[derive(Debug, Clone)]
 pub enum Event {
