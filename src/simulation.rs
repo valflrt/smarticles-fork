@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, sync::mpsc};
 
 use eframe::egui::Vec2;
 use fnv::FnvHashMap;
@@ -68,13 +68,7 @@ pub struct Simulation {
 
 impl Simulation {
     pub fn move_particles(&mut self) {
-        self.compute_position_updates()
-            .iter()
-            .for_each(|(index, (pos, new_pos))| {
-                self.particle_prev_positions[*index] = *pos;
-                self.particle_positions[*index] = *new_pos;
-            });
-
+        self.update_particle_positions();
         self.organize_particles();
     }
 
@@ -100,14 +94,14 @@ impl Simulation {
         self.organize_particles();
     }
 
-    fn compute_position_updates(&self) -> Vec<((usize, usize), (Vec2, Vec2))> {
+    fn update_particle_positions(&mut self) {
+        let (tx, rx) = mpsc::channel();
+
         self.cell_map
             .par_iter()
-            .map(|(&cell, particles)| {
+            .for_each_with(tx, |s, (&cell, particles)| {
                 // Fetch the particles of neighboring cells
                 let neighboring_particles = self.get_neighboring_particles(cell);
-
-                let mut new_positions: Vec<((usize, usize), (Vec2, Vec2))> = Vec::new();
 
                 for &(c1, p1) in particles.iter().filter(|(c, _)| self.enabled_classes[*c]) {
                     let mut force = Vec2::ZERO;
@@ -133,15 +127,14 @@ impl Simulation {
                     // Verlet integration
                     let new_pos = 2. * pos - prev_pos + force * DT;
 
-                    new_positions.push(((c1, p1), (pos, new_pos)));
+                    let _ = s.send(((c1, p1), (pos, new_pos)));
                 }
+            });
 
-                new_positions
-            })
-            .reduce(Vec::new, |mut acc, v| {
-                acc.extend(v);
-                acc
-            })
+        for (index, (pos, new_pos)) in rx {
+            self.particle_prev_positions[index] = pos;
+            self.particle_positions[index] = new_pos;
+        }
     }
 
     fn get_neighboring_particles(&self, cell: Cell) -> Vec<(usize, usize)> {

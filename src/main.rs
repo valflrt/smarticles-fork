@@ -17,9 +17,6 @@ use events::{Event, Senders};
 
 use crate::{app::SmarticlesApp, simulation_manager::SimulationManager};
 
-#[cfg(feature = "cell_map_display")]
-use simulation::Cell;
-
 fn main() {
     let options = NativeOptions {
         viewport: ViewportBuilder::default().with_fullscreen(true),

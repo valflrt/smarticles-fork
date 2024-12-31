@@ -8,8 +8,8 @@ use std::{
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use eframe::{
     egui::{
-        Align2, Area, CentralPanel, ComboBox, Context, PointerButton, ScrollArea, Sense, SidePanel,
-        Slider, Vec2,
+        Align2, Area, CentralPanel, ComboBox, Context, FontId, PointerButton, ScrollArea, Sense,
+        SidePanel, Slider, Vec2,
     },
     epaint::Color32,
     App, Frame,
@@ -587,7 +587,7 @@ impl App for SmarticlesApp {
             });
         } else {
             Area::new("show_ui_button_area".into())
-                .anchor(Align2::LEFT_TOP, [10., 10.]) // Center the button
+                .anchor(Align2::LEFT_TOP, [10., 10.])
                 .show(ctx, |ui| {
                     if ui.button("show ui").clicked() {
                         self.show_ui = true;
@@ -616,7 +616,6 @@ impl App for SmarticlesApp {
                     }
                 }
 
-                // This is weird but look at the values.
                 self.view.zoom = self.view.zoom.clamp(MIN_ZOOM, MAX_ZOOM);
 
                 let center = resp.rect.center().to_vec2()
@@ -662,22 +661,57 @@ impl App for SmarticlesApp {
                     }
                 }
 
+                // Displayed particles are only collected in this vec if zoom
+                // is more than 10. This guarantees that this vec is filled
+                // with a small number of elements.
+                let mut displayed_particles = (self.view.zoom > 10.).then_some(Vec::new());
+
                 for c in (0..CLASS_COUNT).filter(|c| self.classes[*c].enabled) {
                     let class = &self.classes[c];
 
                     for p in 0..self.particle_counts[c] {
                         let pos =
                             (center + self.particle_positions[(c, p)] * self.view.zoom).to_pos2();
+                        if let Some(v) = &mut displayed_particles {
+                            if resp.rect.contains(pos) {
+                                v.push((c, p));
+                            };
+                        }
+
+                        let is_selected =
+                            (c, p) == self.selected_particle && self.classes[c].enabled;
 
                         paint.circle_filled(
                             pos,
-                            if (c, p) == self.selected_particle && self.classes[c].enabled {
+                            if is_selected {
                                 PARTICLE_DIAMETER * 3.
                             } else {
                                 PARTICLE_DIAMETER
                             } * self.view.zoom,
                             class.color,
                         );
+                    }
+                }
+
+                // Prevent particles overlapping text.
+                if let Some(v) = &displayed_particles {
+                    if self.view.zoom > 10. {
+                        for &(c, p) in v {
+                            let pos = (center + self.particle_positions[(c, p)] * self.view.zoom)
+                                .to_pos2();
+
+                            let is_selected =
+                                (c, p) == self.selected_particle && self.classes[c].enabled;
+
+                            paint.text(
+                                pos + Vec2::splat(if is_selected { 1.3 } else { 0.4 })
+                                    * self.view.zoom,
+                                Align2::LEFT_TOP,
+                                format!("{}:{}", self.classes[c].name, p),
+                                FontId::monospace(10.),
+                                Color32::WHITE,
+                            );
+                        }
                     }
                 }
             });
