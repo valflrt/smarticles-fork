@@ -35,7 +35,7 @@ pub const DT: f32 = 0.0004;
 
 pub const SPAWN_DENSITY: f32 = 0.035;
 
-pub const FIRST_THRESHOLD: f32 = 4.;
+pub const FIRST_THRESHOLD: f32 = 6.;
 pub const SECOND_THRESHOLD: f32 = 20.;
 /// Range in which particles interact. If two particles are
 /// farther away than this distance, the will never interact.
