@@ -9,6 +9,7 @@
 - `eggy_outstay_tailward`
 - `frisson_tentor_hues`
 - `fissive_coteaux_bilobate`
+- `unpicks_keros_wackiest`
 
 ## Experimentation
 

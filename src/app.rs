@@ -526,14 +526,18 @@ impl App for SmarticlesApp {
                                     .changed()
                                 {
                                     self.senders.send_sim(Event::StateUpdate(
-                                        StateUpdate::new().power_matrix(&self.power_matrix),
+                                        StateUpdate::new()
+                                            .power_matrix(&self.power_matrix)
+                                            .particle_counts(&self.particle_counts),
                                     ));
                                     self.senders.send_sim(Event::SpawnParticles);
                                 }
                                 if ui.button("reset").clicked() {
                                     self.particle_counts[i] = DEFAULT_PARTICLE_COUNT;
                                     self.senders.send_sim(Event::StateUpdate(
-                                        StateUpdate::new().power_matrix(&self.power_matrix),
+                                        StateUpdate::new()
+                                            .power_matrix(&self.power_matrix)
+                                            .particle_counts(&self.particle_counts),
                                     ));
                                     self.senders.send_sim(Event::SpawnParticles);
                                 }
