@@ -67,11 +67,6 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn move_particles(&mut self) {
-        self.update_particle_positions();
-        self.organize_particles();
-    }
-
     pub fn spawn(&mut self) {
         let spawn_radius =
             (self.particle_counts.iter().sum::<usize>() as f32 / PI).sqrt() / SPAWN_DENSITY;
@@ -91,6 +86,11 @@ impl Simulation {
             }
         }
 
+        self.organize_particles();
+    }
+
+    pub fn move_particles(&mut self) {
+        self.update_particle_positions();
         self.organize_particles();
     }
 
