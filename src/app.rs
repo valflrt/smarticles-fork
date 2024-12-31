@@ -395,7 +395,9 @@ impl App for SmarticlesApp {
                 ui.horizontal(|ui| {
                     ui.label("total particle count:");
 
-                    let total_particle_count: usize = self.particle_counts.iter().sum();
+                    let total_particle_count: usize = (0..CLASS_COUNT)
+                        .filter_map(|c| self.classes[c].enabled.then_some(self.particle_counts[c]))
+                        .sum();
                     ui.code(total_particle_count.to_string());
                 });
 
