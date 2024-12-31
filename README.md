@@ -12,9 +12,9 @@ https://github.com/user-attachments/assets/26b3be2e-b9ab-4b1f-b0f3-838d1722f2d9
 
 ## Roadmap
 
-- [x] add more particle types
+- [x] add more particle classes
 - [x] make it possible to move around and zoom
-- [x] change particle interaction function
+- [x] change particle interaction function (force with respect to distance)
 - [x] add particle inspector that allows following a selected particle
 - [x] add seed history to go back to previous seeds
 - [x] add multithreading: the simulation and display threads run in parallel
