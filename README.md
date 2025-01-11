@@ -41,7 +41,7 @@ Here are the app's general controls:
 
 ![screenshot of the app's basic controls](./img/general_controls.png)
 
-Try randomizing it a few times and seeing what kind of results you get.
+Try randomizing it a few times and see what kind of results you get.
 
 There are 8 particle types. You can change the behavior of each with respect to any other with the sliders:
 
