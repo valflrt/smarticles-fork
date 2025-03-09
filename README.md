@@ -6,7 +6,7 @@ This is a particle life simulation program.
 >
 > – from the [original repository](https://github.com/hunar4321/life_code)
 
-It was originally created by [ChevyRay](https://github.com/ChevyRay) and improved by valflrt. Here is a preview of what the app does:
+It was originally created by [ChevyRay](https://github.com/ChevyRay) and reworked by valflrt. Here is a preview of what the app does:
 
 https://github.com/user-attachments/assets/26b3be2e-b9ab-4b1f-b0f3-838d1722f2d9
 
