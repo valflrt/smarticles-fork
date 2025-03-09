@@ -1,6 +1,6 @@
 # Smarticles
 
-This is a Rust port of [Brainxyz's Artificial Life](https://www.youtube.com/watch?v=0Kx4Y9TVMGg) simulator with some fun features.
+This is a particle life simulation program.
 
 > _A simple program to simulate primitive Artificial Life using simple rules of attraction or repulsion among atom-like particles, producing complex self-organizing life-like patterns._
 >
@@ -24,12 +24,11 @@ https://github.com/user-attachments/assets/26b3be2e-b9ab-4b1f-b0f3-838d1722f2d9
 
 To run this app, you can either download the [latest binary](https://github.com/valflrt/smarticles-fork/releases/latest) or build it yourself from source by following the instructions below.
 
-To build the app, you will need Rust installed, which you can get by following the installation instructions on the [Rust website](https://www.rust-lang.org/). You should then have `cargo` installed, which is the command line program for managing and running Rust projects. Make sure you have the latest version.
+To build the app, you will need to have Rust installed, which you can get by following the installation instructions on the [Rust website](https://www.rust-lang.org/).
 
-Once done, download or clone this repository to your preferred location and run the program using `cargo` like so:
+Then, download or clone this repository wherever you'd like and start the app using:
 
-```commandline
-cd ~/path/to/smarticles
+```
 cargo run -r
 ```
 
@@ -47,21 +46,19 @@ There are 8 particle types. You can change the behavior of each with respect to 
 
 ![screenshot of particle's parameters](./img/params.png)
 
-Those enable you to change the `power` is the particle's attraction to particles of the other type. A positive number means it is attracted to them, and negative means it is repulsed away.
+Those enable you to change the power of the force applied by a particle from a class on a particle from a different class. A positive number means a repulsive interaction, and negative an attractive one.
 
-You can adjust these parameters while the simulation is running if you want to see the effect they have:
+You can adjust the parameters even while the simulation is running:
 
 https://github.com/user-attachments/assets/75868540-8060-4c81-9e51-872ae3ef61af
 
 ## Sharing Simulations
 
-The `seed` field enables you to share or save your favorite seeds. It contains all the information needed to replicate the current simulation.
+The `seed` field enables you to save your favorite seeds and share them.
 
-Pressing `randomize` will give you random seeds, but you can also enter a custom one.
+Pressing `randomize` will generate random seeds.
 
-If you start adjusting parameters, you'll notice the seed changes to a code that begins with the `@` symbol. These are custom-encoded simulations, which you can share by copying the entire code.
-
-The code will be partially cut-off by the textbox, so make sure you select it all before copying.
+When adjusting parameters by hand, the seed turns into a string starting with `@`, which encodes the simulations parameters.
 
 ![screenshot of particle's parameters](./img/custom_code.png)
 
@@ -71,10 +68,10 @@ You can inspect particles using the particle inspector.
 
 ![screenshot of particle inspector menu](./img/particle_inspector_menu.png)
 
-One of the useful features it offers is following the selected particle.
+It allows following a specific particle.
 
 ## Seed History
 
-Using seed history you can easily browse previous seeds (because losing an interesting seed because you clicked randomize too fast is painful believe me).
+A seed history is available to allow browsing previous seeds (losing an interesting seed because you clicked randomize a bit too fast is painful believe me).
 
 ![screenshot of seed history menu](./img/seed_history.png)
